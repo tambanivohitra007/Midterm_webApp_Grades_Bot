@@ -19,7 +19,9 @@ try:
         INSTRUCTION_FOLLOWING_BONUS,
         INSTRUCTION_THRESHOLD,
         LATE_SUBMISSION_PENALTY,
-        SUBMISSION_DEADLINE
+        SUBMISSION_DEADLINE,
+        FREEZE_GRADING,
+        GRADE_COMMITS_UNTIL
     )
 except ImportError:
     print("❌ Error: config.py not found!")
@@ -598,6 +600,32 @@ Respond ONLY in JSON format:
 # ------------------------------
 # GITHUB CLONING AND GRADING
 # ------------------------------
+print("="*70)
+print("🎓 STUDENT GRADING SYSTEM")
+print("="*70)
+print(f"Organization: {ORG_NAME}")
+print(f"Assignment Prefix: {ASSIGNMENT_REPO_PREFIX}")
+print(f"Submission Deadline: {SUBMISSION_DEADLINE}")
+
+# Display grading configuration
+if FREEZE_GRADING:
+    print("\n🔒 FREEZE_GRADING: ENABLED")
+    print("   → Scores are locked and will remain consistent across runs")
+    print("   → Repositories will NOT be updated with new commits")
+else:
+    print("\n🔓 FREEZE_GRADING: DISABLED")
+    print("   → Repositories will be updated with latest commits")
+    print("   → Scores may change if students make new commits")
+
+if GRADE_COMMITS_UNTIL:
+    print(f"\n📅 GRADE_COMMITS_UNTIL: {GRADE_COMMITS_UNTIL}")
+    print(f"   → Only commits before this date will be graded")
+else:
+    print("\n📅 GRADE_COMMITS_UNTIL: Not set")
+    print("   → All commits will be graded")
+
+print("="*70 + "\n")
+
 g = Github(GITHUB_TOKEN)
 org = g.get_organization(ORG_NAME)
 repos = [repo for repo in org.get_repos() if repo.name.startswith(ASSIGNMENT_REPO_PREFIX)]
@@ -616,14 +644,30 @@ for repo in repos:
                 local_path
             )
         else:
-            print("🔄 Repo already exists. Pulling latest changes...")
-            r = Repo(local_path)
-            r.remotes.origin.pull()
+            if FREEZE_GRADING:
+                print("🔒 FREEZE_GRADING enabled - Using existing repository state (no pull)")
+                print("   Scores will remain consistent across multiple runs")
+            else:
+                print("🔄 Repo already exists. Pulling latest changes...")
+                r = Repo(local_path)
+                r.remotes.origin.pull()
 
         # Iterate commits
         r = Repo(local_path)
         commit_list = list(r.iter_commits())
         commit_list.reverse()  # chronological order
+
+        # Filter commits by deadline if GRADE_COMMITS_UNTIL is set
+        if GRADE_COMMITS_UNTIL:
+            try:
+                cutoff_date = datetime.strptime(GRADE_COMMITS_UNTIL, "%Y-%m-%d %H:%M:%S")
+                original_count = len(commit_list)
+                commit_list = [c for c in commit_list if datetime.fromtimestamp(c.committed_date) <= cutoff_date]
+                filtered_count = len(commit_list)
+                if filtered_count < original_count:
+                    print(f"📅 Filtering commits: Grading only {filtered_count}/{original_count} commits before {GRADE_COMMITS_UNTIL}")
+            except Exception as e:
+                print(f"⚠️ Warning: Could not parse GRADE_COMMITS_UNTIL: {e}")
 
         student_scores = []
         total_weighted_score = 0.0
@@ -635,8 +679,15 @@ for repo in repos:
         output_log.append(f"**Student Repository:** {repo.name}")
         output_log.append(f"**Repository Path:** {repo.full_name}")
         output_log.append(f"**Graded on:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        output_log.append(f"**Submission Deadline:** {SUBMISSION_DEADLINE}\n")
-        output_log.append("---\n")
+        output_log.append(f"**Submission Deadline:** {SUBMISSION_DEADLINE}")
+
+        # Add grading freeze notice if enabled
+        if FREEZE_GRADING:
+            output_log.append(f"\n⚠️ **GRADING LOCKED:** Scores are frozen and will not change with new commits.")
+        if GRADE_COMMITS_UNTIL:
+            output_log.append(f"\n📅 **Grading Cutoff:** Only commits before {GRADE_COMMITS_UNTIL} are graded.")
+
+        output_log.append("\n---\n")
         output_log.append("This report provides detailed feedback on each milestone of your project.")
         output_log.append("Please review the criteria, your implementation, and suggestions for improvement.\n")
 
