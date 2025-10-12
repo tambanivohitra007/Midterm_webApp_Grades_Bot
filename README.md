@@ -100,15 +100,18 @@ echo "config.py" >> .gitignore
 
 ## Usage
 
-### Step 1: Clone Student Repositories
+### Step 1: Clone and Grade Student Repositories
 
-(Note: This functionality appears to be in a separate script not shown in the current files)
+```bash
+python Main.py
+```
 
-### Step 2: Grade Repositories
+This script will:
+- Clone all student repositories matching the prefix from GitHub
+- Evaluate each commit against milestone criteria
+- Generate detailed grade reports in `cloned_repos/[repo-name]/result.txt`
 
-Run the grading script that evaluates each student's code using OpenAI's API and generates `result.txt` files in each student's repository directory.
-
-### Step 3: Send Grades via Teams
+### Step 2: Send Grades via Teams
 
 ```bash
 python chatMessage.py
@@ -119,6 +122,50 @@ This script will:
 - Read grade reports from each student's `result.txt`
 - Create 1:1 chats with each student
 - Send personalized grade messages
+
+## Ensuring Consistent Grading
+
+To ensure student scores don't change when running the grading script multiple times, use one of these approaches:
+
+### Method 1: Freeze Grading (Recommended for Final Grades)
+
+After the first grading run, edit `config.py`:
+
+```python
+FREEZE_GRADING = True  # Locks scores, prevents pulling new commits
+```
+
+**When to use:**
+- After the deadline has passed
+- When finalizing grades before sending to students
+- To ensure consistency when re-running the script
+
+### Method 2: Grade Up to Deadline
+
+Set a cutoff date in `config.py`:
+
+```python
+GRADE_COMMITS_UNTIL = "2025-10-03 23:59:59"  # Only grade commits before this date
+```
+
+**When to use:**
+- To only grade commits before the deadline
+- To ignore late commits
+- When students continue working after the deadline
+
+### Method 3: Combination (Most Reliable)
+
+Use both settings for maximum consistency:
+
+```python
+FREEZE_GRADING = True
+GRADE_COMMITS_UNTIL = "2025-10-03 23:59:59"
+```
+
+This ensures:
+1. Only commits before the deadline are graded
+2. No new commits are pulled from GitHub
+3. Scores remain identical across multiple runs
 
 ## Configuration Details
 
@@ -139,6 +186,17 @@ This script will:
 - `INSTRUCTION_THRESHOLD`: Minimum quality percentage to earn bonus
 - `LATE_SUBMISSION_PENALTY`: Points deducted for late submissions
 - `SUBMISSION_DEADLINE`: Deadline for submissions (format: YYYY-MM-DD HH:MM:SS)
+
+### Grading Consistency
+
+These settings ensure scores remain consistent across multiple grading runs:
+
+- `FREEZE_GRADING`: Set to `True` to prevent pulling new commits (keeps scores locked)
+  - When `False`: Always grades the latest commits (scores may change)
+  - When `True`: Uses existing repository state (scores remain consistent)
+- `GRADE_COMMITS_UNTIL`: Grade only commits before this date (format: YYYY-MM-DD HH:MM:SS)
+  - Leave as empty string `""` to grade all commits
+  - Set to deadline date to only grade commits before deadline
 
 ### Microsoft Teams
 
