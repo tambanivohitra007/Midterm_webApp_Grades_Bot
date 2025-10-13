@@ -11,7 +11,89 @@ This project automates the grading workflow for programming assignments by:
 3. Generating detailed grade reports with feedback
 4. Sending grades directly to students via Microsoft Teams 1:1 chat
 
-## Project Structure
+## Expected Student Repository Structure
+
+Students are required to follow this file structure for their ATM Banking System project:
+
+```
+atm_project/
+│── index.php              # Entry point, redirects to login or dashboard
+│── register.php           # User registration form and processing
+│── login.php              # User login form + session + failed login handling
+│── logout.php             # Destroys session to log out user
+│── dashboard.php          # Shows user balance and menu (link to transaction/history)
+│── transaction.php        # Combined deposit & withdraw form + processing
+│── transfer.php           # User-to-user transfer functionality
+│── history.php            # Shows transaction history (filterable)
+│── pin_change.php         # PIN change functionality
+│
+├── includes/
+│   ├── db.php             # Database connection via PDO
+│   ├── auth.php           # Session/authentication helpers, checks login status
+│   ├── helpers.php        # Validation functions, rules, formatting, reusable code
+│
+├── assets/
+│   ├── css/style.css      # Custom styles (Bootstrap optional overrides)
+│   └── js/app.js          # JavaScript (UI enhancements, AJAX)
+│
+├── api/
+│   └── process_transaction.php  # AJAX endpoint for transactions
+│
+├── admin/
+│   ├── index.php          # Admin dashboard
+│   ├── users.php          # User management
+│   └── auth_admin.php     # Admin authentication
+│
+├── sql/
+│   └── schema.sql         # Database schema (users + transactions + activity_log)
+│
+└── README.md              # Project documentation
+```
+
+**Key Requirements:**
+- Students must follow this structure for proper grading
+- Each milestone corresponds to specific files being created/modified
+- The grading system checks for file existence and required code features
+- 23 milestones total, covering setup, security, transactions, admin, and code quality
+
+## Milestone Overview
+
+The grading system evaluates 23 milestones across 6 categories (100 points total):
+
+### 1. Basic Setup & Core Features (25 points)
+- **Commit 1-7**: Project setup, registration, authentication, dashboard, logout
+
+### 2. Security & Validation (20 points)
+- **Commit 8**: Input validation and PIN security
+- **Commit 21-22**: CSRF protection implementation
+
+### 3. Transaction Features (25 points)
+- **Commit 9**: Dashboard enhancements with recent activities
+- **Commit 10**: Deposit & withdraw transactions
+- **Commit 11**: Atomic transactions with proper rollback
+- **Commit 12**: User-to-user transfers
+
+### 4. Advanced Features (15 points)
+- **Commit 13**: Transaction history with filtering and pagination
+- **Commit 14**: AJAX refactoring for dynamic updates
+
+### 5. Admin & Logging (10 points)
+- **Commit 15**: Admin dashboard with user management
+- **Commit 16-17**: Activity logging system
+
+### 6. Additional Security (5 points)
+- **Commit 18**: PIN change functionality
+- **Commit 19**: Daily withdrawal limits
+- **Commit 20**: Transfer rate limiting
+
+### 7. Code Quality (Holistic evaluation)
+- **Commit 23**: Documentation, comments, optimization (not separately scored)
+
+**Bonus/Penalties:**
+- +5 points: Average quality ≥ 80% (Instruction Following Bonus)
+- -5 points: Late submission after deadline
+
+## Grading System Project Structure
 
 - `config.py` - Configuration file containing sensitive credentials and settings (DO NOT COMMIT)
 - `chatMessage.py` - Microsoft Teams integration for sending grades to students
@@ -22,10 +104,12 @@ This project automates the grading workflow for programming assignments by:
 
 - **Automated Repository Cloning**: Fetches all student repositories matching a specific prefix from GitHub
 - **AI-Powered Grading**: Uses OpenAI's API to evaluate code quality, functionality, and adherence to requirements
+- **GitHub Username Extraction**: Automatically identifies each student's GitHub username from their commits
 - **Bonus/Penalty System**:
   - Awards bonus points for high-quality instruction following (>80% average)
   - Applies late submission penalties based on deadline
 - **Microsoft Teams Integration**: Sends personalized grade reports directly to students via Teams chat
+- **Student Summary Report**: Generates a master summary file with all GitHub usernames and scores
 - **Comprehensive Logging**: Tracks all operations with detailed logs
 
 ## Prerequisites
@@ -221,6 +305,78 @@ All operations are logged to:
 - `teams_grade_log.txt` file
 
 Log entries include timestamps, severity levels, and detailed operation information.
+
+## Output Files
+
+After running the grading system, you'll find the following outputs:
+
+### Individual Grade Reports
+- **Location**: `cloned_repos/[repo-name]/result.txt`
+- **Content**: Detailed feedback for each milestone with scores and suggestions
+- **Includes**: GitHub username, repository info, milestone-by-milestone analysis
+
+### Student Summary
+- **Location**: `cloned_repos/student_summary.txt`
+- **Content**: Master list of all students with their:
+  - Repository name
+  - GitHub username
+  - Final score (out of 100)
+  - Letter grade
+
+**Example**:
+```
+================================================================================
+STUDENT GRADING SUMMARY
+Generated: 2025-10-13 14:30:00
+================================================================================
+
+Repository: midterm-exam-atm-student1
+GitHub Username: @student1-github
+Final Score: 85.50/100
+Grade: A (Excellent)
+--------------------------------------------------------------------------------
+
+Repository: midterm-exam-atm-student2
+GitHub Username: @student2-github
+Final Score: 72.30/100
+Grade: B (Good)
+--------------------------------------------------------------------------------
+```
+
+This summary file is useful for:
+- Quick overview of all student scores
+- Mapping GitHub usernames to repositories
+- Grade book imports
+- Class statistics
+
+## GitHub Username Extraction
+
+The system automatically extracts each student's GitHub username using two methods:
+
+### Method 1: GitHub API (Primary)
+- Queries repository contributors via GitHub API
+- Identifies the contributor with the most commits
+- Most reliable method
+
+### Method 2: Commit Analysis (Fallback)
+- Analyzes commit author emails
+- Extracts username from GitHub noreply emails
+- Format: `username@users.noreply.github.com` or `ID+username@users.noreply.github.com`
+
+### Usage
+
+The GitHub username is automatically:
+1. Displayed in the console during grading
+2. Included in each student's grade report
+3. Listed in the master student summary file
+
+You can optionally map GitHub usernames to student emails in `config.py`:
+
+```python
+GITHUB_USERNAME_TO_EMAIL = {
+    "student-github-username": "student@university.edu",
+}
+```
 
 ## Troubleshooting
 

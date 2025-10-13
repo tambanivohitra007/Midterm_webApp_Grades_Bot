@@ -131,10 +131,12 @@ MILESTONES = {
         "files": ["includes/helpers.php", "includes/auth.php"],
         "weight": 5,
         "criteria": [
-            "Function to generate CSRF token",
-            "Token stored in session",
-            "Function to validate CSRF token",
-            "Proper implementation (random_bytes or similar)"
+            "generate_csrf_token() function creates unique token",
+            "Token stored in $_SESSION",
+            "validate_csrf_token($token) function verifies token",
+            "csrf_token_field() returns hidden input HTML",
+            "Proper implementation using random_bytes() or similar",
+            "Token generated on login/session start"
         ]
     },
     22: {
@@ -142,10 +144,13 @@ MILESTONES = {
         "files": ["register.php", "login.php", "transaction.php", "transfer.php", "pin_change.php", "admin/*.php"],
         "weight": 7,
         "criteria": [
-            "CSRF tokens added to all forms (hidden input)",
-            "Token validation in form processing",
-            "Multiple forms protected (at least 4-5)",
-            "Proper error handling for invalid tokens"
+            "CSRF tokens added to ALL state-changing forms",
+            "Hidden input fields with CSRF token in each form",
+            "Token validation performed before processing each form",
+            "Registration, Login, Transactions, Transfers protected",
+            "Admin forms and PIN change protected",
+            "Proper error messages for invalid/missing tokens",
+            "Prevents Cross-Site Request Forgery attacks"
         ]
     },
 
@@ -155,10 +160,11 @@ MILESTONES = {
         "files": ["dashboard.php"],
         "weight": 3,
         "criteria": [
-            "Recent transactions displayed",
-            "Query to fetch recent activities",
+            "Recent transactions displayed (5 most recent)",
+            "Query to fetch recent activities from transactions table",
             "Formatted display (table or list)",
-            "Shows transaction type and amount"
+            "Shows transaction type, amount, and timestamp",
+            "Activities properly logged for display"
         ]
     },
     10: {
@@ -244,9 +250,11 @@ MILESTONES = {
         "files": ["sql/schema.sql", "includes/helpers.php"],
         "weight": 2,
         "criteria": [
-            "Activity_logs table created",
-            "Columns: user_id, action, timestamp, ip_address",
-            "Helper function to log activities"
+            "Activity_log table created with proper structure",
+            "Columns: id, user_id, activity_type, details, ip_address, created_at",
+            "Foreign key relationship to users table",
+            "Helper function log_activity() to record events",
+            "Function captures user_id, action, IP address"
         ]
     },
     17: {
@@ -279,10 +287,11 @@ MILESTONES = {
         "files": ["transaction.php", "includes/helpers.php"],
         "weight": 2,
         "criteria": [
-            "Function to check daily withdrawal total",
-            "Limit enforced (e.g., $1000/day)",
-            "Query sums withdrawals for current day",
-            "Error message if limit exceeded"
+            "Function to check daily withdrawal total (last 24 hours)",
+            "Realistic daily limit enforced (e.g., $5,000/day)",
+            "Query sums all withdrawals within last 24 hours",
+            "Rejection if current withdrawal + 24hr sum > limit",
+            "Clear error message when limit exceeded"
         ]
     },
     20: {
@@ -290,9 +299,11 @@ MILESTONES = {
         "files": ["transfer.php", "api/process_transaction.php"],
         "weight": 1,
         "criteria": [
-            "Track transfer frequency (session or database)",
-            "Limit transfers per time period",
-            "Error message for rate limit"
+            "Track transfer attempts in activity_log or transactions table",
+            "Limit enforced (e.g., max 10 transfers per hour)",
+            "Count recent transfers before processing",
+            "Error message displayed when rate limit exceeded",
+            "Prevents spam/abuse of transfer feature"
         ]
     },
 
@@ -302,13 +313,69 @@ MILESTONES = {
         "files": ["includes/helpers.php", "includes/auth.php", "all PHP files"],
         "weight": 0,
         "criteria": [
-            "Code is well-commented",
-            "Functions have clear names",
-            "Proper indentation",
-            "No major security vulnerabilities"
+            "Comprehensive PHPDoc comments for all functions",
+            "Parameters, return values, and purpose documented",
+            "Inline comments explain complex logic",
+            "Functions have clear, descriptive names",
+            "Proper indentation and code formatting",
+            "Optimized database queries (prepared statements)",
+            "Duplicate code refactored into reusable functions",
+            "No major security vulnerabilities",
+            "Business rules and assumptions documented"
         ]
     }
 }
+
+# ------------------------------
+# HELPER FUNCTION TO GET STUDENT GITHUB USERNAME
+# ------------------------------
+def get_student_github_username(repo, commit_list):
+    """
+    Extract the student's GitHub username from the repository.
+    Uses commits to find the primary contributor (student).
+    """
+    try:
+        # Method 1: Get contributors from GitHub API (most reliable)
+        try:
+            contributors = repo.get_contributors()
+            # Filter contributors and get the one with most contributions
+            # Typically the student will have the most commits
+            contributor_list = [(c.login, c.contributions) for c in contributors]
+            if contributor_list:
+                # Sort by contributions (descending) and get the top one
+                contributor_list.sort(key=lambda x: x[1], reverse=True)
+                return contributor_list[0][0]  # Return username with most contributions
+        except Exception as e:
+            print(f"   ⚠️ Could not get contributors via API: {e}")
+
+        # Method 2: Extract from commit authors (fallback)
+        if commit_list:
+            # Count commits per author email
+            author_emails = {}
+            for commit in commit_list:
+                email = commit.author.email
+                author_emails[email] = author_emails.get(email, 0) + 1
+
+            # Get the author with most commits
+            if author_emails:
+                most_active_email = max(author_emails, key=author_emails.get)
+                # Extract username from email (if it's a GitHub noreply email)
+                if '@users.noreply.github.com' in most_active_email:
+                    # Format: username@users.noreply.github.com or ID+username@users.noreply.github.com
+                    username_part = most_active_email.split('@')[0]
+                    if '+' in username_part:
+                        return username_part.split('+')[1]
+                    else:
+                        return username_part
+                else:
+                    # Return the email as identifier
+                    return most_active_email.split('@')[0]
+
+        return "unknown"
+    except Exception as e:
+        print(f"   ⚠️ Error extracting GitHub username: {e}")
+        return "unknown"
+
 
 # ------------------------------
 # TESTING HELPER FUNCTIONS
@@ -631,6 +698,9 @@ org = g.get_organization(ORG_NAME)
 repos = [repo for repo in org.get_repos() if repo.name.startswith(ASSIGNMENT_REPO_PREFIX)]
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+# Prepare to collect student information
+student_summary = []
+
 for repo in repos:
     print(f"\n📦 Processing {repo.full_name} ...")
     local_path = os.path.join(OUTPUT_DIR, repo.name)
@@ -657,6 +727,10 @@ for repo in repos:
         commit_list = list(r.iter_commits())
         commit_list.reverse()  # chronological order
 
+        # Extract student's GitHub username
+        student_github_username = get_student_github_username(repo, commit_list)
+        print(f"👤 Student GitHub Username: {student_github_username}")
+
         # Filter commits by deadline if GRADE_COMMITS_UNTIL is set
         if GRADE_COMMITS_UNTIL:
             try:
@@ -677,6 +751,7 @@ for repo in repos:
         output_log = []
         output_log.append(f"# 📊 DETAILED GRADING REPORT\n")
         output_log.append(f"**Student Repository:** {repo.name}")
+        output_log.append(f"**GitHub Username:** @{student_github_username}")
         output_log.append(f"**Repository Path:** {repo.full_name}")
         output_log.append(f"**Graded on:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         output_log.append(f"**Submission Deadline:** {SUBMISSION_DEADLINE}")
@@ -1062,6 +1137,14 @@ for repo in repos:
             except Exception as e:
                 print(f"⚠️ Failed to write result file: {e}")
 
+            # Collect student summary information
+            student_summary.append({
+                'repo_name': repo.name,
+                'github_username': student_github_username,
+                'final_score': total_weighted_score,
+                'grade': grade
+            })
+
         else:
             print("⚠️ No milestones graded for this repo.")
             output_log.append("\n## ⚠️ No Milestones Graded\n")
@@ -1073,7 +1156,39 @@ for repo in repos:
             except Exception as e:
                 print(f"⚠️ Failed to write result file: {e}")
 
+            # Collect student summary even if no milestones graded
+            student_summary.append({
+                'repo_name': repo.name,
+                'github_username': student_github_username,
+                'final_score': 0.0,
+                'grade': "No submissions"
+            })
+
     except GitCommandError as e:
         print(f"❌ Git error for {repo.name}: {e}")
     except Exception as e:
         print(f"❌ Unexpected error for {repo.name}: {e}")
+
+# ------------------------------
+# WRITE STUDENT SUMMARY FILE
+# ------------------------------
+if student_summary:
+    summary_file = os.path.join(OUTPUT_DIR, "student_summary.txt")
+    try:
+        with open(summary_file, 'w', encoding='utf-8') as f:
+            f.write("="*80 + "\n")
+            f.write("STUDENT GRADING SUMMARY\n")
+            f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write("="*80 + "\n\n")
+
+            for student in student_summary:
+                f.write(f"Repository: {student['repo_name']}\n")
+                f.write(f"GitHub Username: @{student['github_username']}\n")
+                f.write(f"Final Score: {student['final_score']:.2f}/100\n")
+                f.write(f"Grade: {student['grade']}\n")
+                f.write("-"*80 + "\n\n")
+
+        print(f"\n\n✅ Student summary saved to: {summary_file}")
+        print(f"📊 Total students graded: {len(student_summary)}")
+    except Exception as e:
+        print(f"⚠️ Failed to write student summary: {e}")
