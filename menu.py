@@ -36,17 +36,17 @@ class GradingMenu:
     def show_menu(self):
         """Display the main menu"""
         print("\n" + "─" * 80)
-        print("📋 MAIN MENU".center(80))
+        print("MAIN MENU".center(80))
         print("─" * 80)
         print()
-        print("  [1] 🎯 Grade All Students")
-        print("  [2] 📧 Send Teams Messages")
-        print("  [3] ✓  Verify Email Mappings")
-        print("  [4] 📊 View Student Summary")
-        print("  [5] ⚙  View Configuration")
-        print("  [6] 🔄 Refresh Status")
-        print("  [7] 📂 Open Config File")
-        print("  [8] ❌ Exit")
+        print("  [1] Grade All Students")
+        print("  [2] Send Teams Messages")
+        print("  [3] Verify Email Mappings")
+        print("  [4] View Student Summary")
+        print("  [5] View Configuration")
+        print("  [6] Refresh Status")
+        print("  [7] Open Config File")
+        print("  [8] Exit")
         print()
         print("─" * 80)
 
@@ -84,7 +84,7 @@ class GradingMenu:
             print("─" * 80)
 
         except Exception as e:
-            print(f"⚠️  Error loading status: {e}")
+            print(f"Error loading status: {e}")
 
     def run_script(self, script_name, description):
         """Run a Python script and show output in real-time"""
@@ -114,42 +114,42 @@ class GradingMenu:
 
             print()
             if process.returncode == 0:
-                print("✅ Operation completed successfully!")
+                print("peration completed successfully!")
             else:
-                print(f"❌ Operation failed with exit code: {process.returncode}")
+                print(f"Operation failed with exit code: {process.returncode}")
 
         except FileNotFoundError:
-            print(f"❌ Error: {script_name} not found!")
+            print(f"Error: {script_name} not found!")
         except Exception as e:
-            print(f"❌ Error running {script_name}: {e}")
+            print(f"Error running {script_name}: {e}")
 
         print()
         print("=" * 80)
 
     def grade_all_students(self):
         """Grade all student repositories"""
-        print("\n⚠️  This will grade all student repositories.")
+        print("\n⚠This will grade all student repositories.")
         confirm = input("Continue? (y/n): ").strip().lower()
 
         if confirm == 'y':
             self.run_script("Main.py", "GRADING ALL STUDENTS")
         else:
-            print("❌ Operation cancelled.")
+            print("Operation cancelled.")
 
     def send_teams_messages(self):
         """Send messages via Microsoft Teams"""
         if not os.path.exists("cloned_repos"):
-            print("\n❌ Error: No grading results found!")
+            print("\nError: No grading results found!")
             print("   Please run grading first.")
             return
 
-        print("\n⚠️  This will send grade reports to all students via Microsoft Teams.")
+        print("\n⚠This will send grade reports to all students via Microsoft Teams.")
         confirm = input("Continue? (y/n): ").strip().lower()
 
         if confirm == 'y':
             self.run_script("chatMessage.py", "SENDING TEAMS MESSAGES")
         else:
-            print("❌ Operation cancelled.")
+            print("Operation cancelled.")
 
     def verify_mappings(self):
         """Verify email mappings"""
@@ -160,12 +160,12 @@ class GradingMenu:
         summary_file = os.path.join("cloned_repos", "student_summary.txt")
 
         if not os.path.exists(summary_file):
-            print("\n❌ Error: Student summary not found!")
+            print("\nError: Student summary not found!")
             print("   Please run grading first.")
             return
 
         print("\n" + "=" * 80)
-        print("📊 STUDENT SUMMARY".center(80))
+        print("STUDENT SUMMARY".center(80))
         print("=" * 80)
         print()
 
@@ -173,7 +173,7 @@ class GradingMenu:
             with open(summary_file, 'r', encoding='utf-8') as f:
                 print(f.read())
         except Exception as e:
-            print(f"❌ Error reading summary: {e}")
+            print(f"Error reading summary: {e}")
 
         print("=" * 80)
 
@@ -207,7 +207,7 @@ class GradingMenu:
             print(f"Students Mapped: {len(STUDENT_EMAILS)}")
 
         except Exception as e:
-            print(f"❌ Error loading configuration: {e}")
+            print(f"Error loading configuration: {e}")
 
         print()
         print("=" * 80)
@@ -217,10 +217,10 @@ class GradingMenu:
         config_file = "config.py"
 
         if not os.path.exists(config_file):
-            print("\n❌ Error: config.py not found!")
+            print("\nError: config.py not found!")
             return
 
-        print(f"\n📂 Opening {config_file}...")
+        print(f"\nOpening {config_file}...")
 
         try:
             if sys.platform == "win32":
@@ -230,11 +230,11 @@ class GradingMenu:
             else:
                 subprocess.run(["xdg-open", config_file])
 
-            print("✅ Config file opened in default editor.")
-            print("💡 After editing, use option [6] to refresh status.")
+            print("Config file opened in default editor.")
+            print("After editing, use option [6] to refresh status.")
 
         except Exception as e:
-            print(f"❌ Error opening config file: {e}")
+            print(f"Error opening config file: {e}")
 
     def pause(self):
         """Pause and wait for user input"""
@@ -283,7 +283,7 @@ class GradingMenu:
                 elif choice == '6':
                     self.clear_screen()
                     self.show_banner()
-                    print("\n✅ Status refreshed!")
+                    print("\nStatus refreshed!")
 
                 elif choice == '7':
                     self.open_config_file()
@@ -293,13 +293,13 @@ class GradingMenu:
 
                 elif choice == '8':
                     print("\n" + "=" * 80)
-                    print("👋 Thank you for using Student Grading System!".center(80))
+                    print("Thank you for using Student Grading System!".center(80))
                     print("=" * 80)
                     print()
                     break
 
                 else:
-                    print(f"\n❌ Invalid option: {choice}")
+                    print(f"\nInvalid option: {choice}")
                     print("   Please select a number between 1 and 8.")
                     self.pause()
                     self.clear_screen()
@@ -307,13 +307,13 @@ class GradingMenu:
 
             except KeyboardInterrupt:
                 print("\n\n" + "=" * 80)
-                print("👋 Goodbye!".center(80))
+                print("Goodbye!".center(80))
                 print("=" * 80)
                 print()
                 break
 
             except Exception as e:
-                print(f"\n❌ Unexpected error: {e}")
+                print(f"\nUnexpected error: {e}")
                 self.pause()
                 self.clear_screen()
                 self.show_banner()
