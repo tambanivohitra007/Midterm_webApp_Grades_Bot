@@ -4,7 +4,13 @@ from git import Repo, GitCommandError, NULL_TREE
 import json
 from openai import OpenAI
 from datetime import datetime
+import sys
+import io
 
+# Fix encoding for Windows console
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 # ------------------------------
 # CONFIGURATION - Import from config.py
 # ------------------------------

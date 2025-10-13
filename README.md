@@ -95,16 +95,26 @@ The grading system evaluates 23 milestones across 6 categories (100 points total
 
 ## Grading System Project Structure
 
-- `config.py` - Configuration file containing sensitive credentials and settings (DO NOT COMMIT)
+- `menu.py` - **Interactive console menu** for managing all grading operations (recommended entry point)
+- `Main.py` - Main grading script that clones repositories and evaluates student code
 - `chatMessage.py` - Microsoft Teams integration for sending grades to students
+- `verify_mappings.py` - Helper script to verify student email mappings
+- `list_students.py` - Helper script to list all student repositories
+- `config.py` - Configuration file containing sensitive credentials and settings (DO NOT COMMIT)
 - `cloned_repos/` - Directory where student repositories are cloned
 - `teams_grade_log.txt` - Log file tracking the grading and messaging process
 
 ## Features
 
+- **Interactive Console Menu**: Simple, user-friendly interface for managing all grading operations
+  - Real-time console output with full visibility
+  - System status monitoring
+  - Confirmation prompts for critical operations
+  - No GUI dependencies - works on any terminal
 - **Automated Repository Cloning**: Fetches all student repositories matching a specific prefix from GitHub
 - **AI-Powered Grading**: Uses OpenAI's API to evaluate code quality, functionality, and adherence to requirements
 - **GitHub Username Extraction**: Automatically identifies each student's GitHub username from their commits
+- **Email Mapping Verification**: Helper scripts to verify all students are properly mapped to their email addresses
 - **Bonus/Penalty System**:
   - Awards bonus points for high-quality instruction following (>80% average)
   - Applies late submission penalties based on deadline
@@ -184,7 +194,42 @@ echo "config.py" >> .gitignore
 
 ## Usage
 
-### Step 1: Clone and Grade Student Repositories
+### Interactive Console Menu (Recommended)
+
+Launch the interactive console menu for easy management:
+
+```bash
+python menu.py
+```
+
+The menu provides a simple interface with the following options:
+
+```
+📋 MAIN MENU
+────────────────────────────────────────────────────────────────────────────────
+
+  [1] 🎯 Grade All Students
+  [2] 📧 Send Teams Messages
+  [3] ✓  Verify Email Mappings
+  [4] 📊 View Student Summary
+  [5] ⚙  View Configuration
+  [6] 🔄 Refresh Status
+  [7] 📂 Open Config File
+  [8] ❌ Exit
+```
+
+**Features:**
+- Real-time console output with full visibility
+- System status display (organization, deadline, grading status, students mapped/graded)
+- Automatic confirmation prompts for critical operations
+- Easy access to all grading system functions
+- No GUI dependencies - works on any terminal
+
+### Manual Script Execution
+
+Alternatively, you can run scripts individually:
+
+#### Step 1: Clone and Grade Student Repositories
 
 ```bash
 python Main.py
@@ -195,7 +240,7 @@ This script will:
 - Evaluate each commit against milestone criteria
 - Generate detailed grade reports in `cloned_repos/[repo-name]/result.txt`
 
-### Step 2: Send Grades via Teams
+#### Step 2: Send Grades via Teams
 
 ```bash
 python chatMessage.py
@@ -206,6 +251,17 @@ This script will:
 - Read grade reports from each student's `result.txt`
 - Create 1:1 chats with each student
 - Send personalized grade messages
+
+#### Step 3: Verify Email Mappings
+
+```bash
+python verify_mappings.py
+```
+
+This script will:
+- Check that all repositories are mapped to student emails
+- Display verification status for each repository
+- Show summary of mapped vs unmapped repositories
 
 ## Ensuring Consistent Grading
 
