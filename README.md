@@ -97,10 +97,12 @@ The grading system evaluates 23 milestones across 6 categories (100 points total
 
 - `menu.py` - **Interactive console menu** for managing all grading operations (recommended entry point)
 - `Main.py` - Main grading script that clones repositories and evaluates student code
+- `MoodleIntegration.py` - Moodle integration for automatic grade uploading to LMS
 - `chatMessage.py` - Microsoft Teams integration for sending grades to students
 - `verify_mappings.py` - Helper script to verify student email mappings
 - `list_students.py` - Helper script to list all student repositories
 - `config.py` - Configuration file containing sensitive credentials and settings (DO NOT COMMIT)
+- `MOODLE_SETUP.md` - Detailed guide for setting up Moodle Web Services integration
 - `cloned_repos/` - Directory where student repositories are cloned
 - `teams_grade_log.txt` - Log file tracking the grading and messaging process
 
@@ -118,6 +120,11 @@ The grading system evaluates 23 milestones across 6 categories (100 points total
 - **Bonus/Penalty System**:
   - Awards bonus points for high-quality instruction following (>80% average)
   - Applies late submission penalties based on deadline
+- **Moodle LMS Integration**: Automatically uploads final grades to Moodle via Web Services API
+  - Batch grade upload for all students
+  - Maps GitHub usernames to Moodle student IDs
+  - Detailed success/failure reporting
+  - Supports all Moodle assignment types
 - **Microsoft Teams Integration**: Sends personalized grade reports directly to students via Teams chat
 - **Student Summary Report**: Generates a master summary file with all GitHub usernames and scores
 - **Comprehensive Logging**: Tracks all operations with detailed logs
@@ -127,7 +134,8 @@ The grading system evaluates 23 milestones across 6 categories (100 points total
 - Python 3.7+
 - GitHub account with access to student repositories
 - OpenAI API key
-- Microsoft Azure AD application with Teams permissions
+- Microsoft Azure AD application with Teams permissions (for Teams integration)
+- Moodle administrator access (for LMS grade upload)
 - Required Python packages:
   - `requests`
   - `msal` (Microsoft Authentication Library)
@@ -175,7 +183,16 @@ STUDENT_EMAILS = {
     "repo-name": "student@university.edu",
     # Add more mappings here
 }
+
+# Moodle Web Services Configuration (optional - for automatic grade upload)
+MOODLE_URL = "https://lms.apiu.edu"
+MOODLE_TOKEN = "your_web_service_token"
+MOODLE_COURSE_ID = 3385
+MOODLE_ACTIVITY_ID = 144160  # Assignment module ID
+MOODLE_GRADE_ITEM_ID = 76732  # Grade item ID (for API)
 ```
+
+**Note**: Student email format should be `studentID@university.edu` where the studentID (before @) is used as the Moodle username.
 
 ### 3. Azure AD App Registration
 
@@ -205,25 +222,32 @@ python menu.py
 The menu provides a simple interface with the following options:
 
 ```
-📋 MAIN MENU
+MAIN MENU
 ────────────────────────────────────────────────────────────────────────────────
 
-  [1] 🎯 Grade All Students
-  [2] 📧 Send Teams Messages
-  [3] ✓  Verify Email Mappings
-  [4] 📊 View Student Summary
-  [5] ⚙  View Configuration
-  [6] 🔄 Refresh Status
-  [7] 📂 Open Config File
-  [8] ❌ Exit
+  [1] Grade All Students
+  [2] Upload Grades to Moodle
+  [3] Send Teams Messages
+  [4] Verify Email Mappings
+  [5] View Student Summary
+  [6] View Configuration
+  [7] Refresh Status
+  [8] Open Config File
+  [9] Exit
 ```
 
 **Features:**
 - Real-time console output with full visibility
-- System status display (organization, deadline, grading status, students mapped/graded)
+- System status display (organization, deadline, grading status, students mapped/graded, Moodle configuration)
 - Automatic confirmation prompts for critical operations
 - Easy access to all grading system functions
 - No GUI dependencies - works on any terminal
+
+**Workflow:**
+1. **Grade All Students** - Run Main.py to evaluate all repositories
+2. **Upload Grades to Moodle** - Automatically upload grades to your LMS
+3. **Send Teams Messages** - Notify students with personalized reports
+4. **View Student Summary** - Review all grades and statistics
 
 ### Manual Script Execution
 
@@ -262,6 +286,85 @@ This script will:
 - Check that all repositories are mapped to student emails
 - Display verification status for each repository
 - Show summary of mapped vs unmapped repositories
+
+## Moodle Integration
+
+The grading system includes automatic grade uploading to Moodle via Web Services API.
+
+### Quick Setup
+
+1. **Enable Moodle Web Services** (requires admin access)
+2. **Create a Web Service Token** in Moodle
+3. **Find your Course and Assignment IDs** from Moodle URLs
+4. **Configure `config.py`** with Moodle credentials
+5. **Map student emails** in `STUDENT_EMAILS` (studentID@domain.edu format)
+6. **Run the integration** via menu option [2] or `python MoodleIntegration.py`
+
+### Features
+
+- **Batch Grade Upload**: Upload all student grades in one operation
+- **Automatic Mapping**: Uses student email prefixes as Moodle usernames
+- **Error Handling**: Reports success/failure for each student
+- **Results Log**: Saves detailed results to `moodle_update_results.txt`
+- **Validation**: Tests connection and permissions before uploading
+
+### Configuration Example
+
+```python
+# In config.py
+MOODLE_URL = "https://lms.apiu.edu"
+MOODLE_TOKEN = "your_web_service_token_here"
+MOODLE_COURSE_ID = 3385
+MOODLE_ACTIVITY_ID = 144160  # From assignment URL
+MOODLE_GRADE_ITEM_ID = 76732  # For API grade updates
+
+# Student emails (ID before @ is used as Moodle username)
+STUDENT_EMAILS = {
+    "midterm-exam-atm-student1": "202100178@my.apiu.edu",  # Moodle username: 202100178
+    "midterm-exam-atm-student2": "202300155@my.apiu.edu",  # Moodle username: 202300155
+}
+```
+
+### Required Moodle Functions
+
+Your Moodle Web Service must have these functions enabled:
+- `core_webservice_get_site_info` - Connection test
+- `core_course_get_courses` - Course information
+- `core_user_get_users` - Find students
+- `core_grades_update_grades` - Update grades
+- `gradereport_user_get_grade_items` - Grade items
+
+### Detailed Setup Guide
+
+For complete step-by-step instructions, see **[MOODLE_SETUP.md](MOODLE_SETUP.md)** which covers:
+- Enabling Web Services in Moodle
+- Creating and configuring web service tokens
+- Finding Course and Assignment IDs
+- Troubleshooting common issues
+- Security best practices
+
+### Usage from Menu
+
+```bash
+python menu.py
+# Select option [2] Upload Grades to Moodle
+```
+
+The script will:
+1. Load student data from `config.py`
+2. Read grades from `student_summary.txt`
+3. Test Moodle connection
+4. Ask for confirmation
+5. Upload all grades in batch
+6. Save results to `cloned_repos/moodle_update_results.txt`
+
+### Manual Execution
+
+```bash
+python MoodleIntegration.py
+```
+
+This will run the full test suite and allow you to upload grades directly.
 
 ## Ensuring Consistent Grading
 
@@ -346,13 +449,25 @@ These settings ensure scores remain consistent across multiple grading runs:
 - `INSTRUCTOR_EMAIL`: Email address of the instructor
 - `STUDENT_EMAILS`: Dictionary mapping repository names to student email addresses
 
+### Moodle Integration
+
+- `MOODLE_URL`: Your Moodle site URL (e.g., https://lms.apiu.edu)
+- `MOODLE_TOKEN`: Web service token from Moodle admin panel
+- `MOODLE_COURSE_ID`: Course ID (from course URL)
+- `MOODLE_ACTIVITY_ID`: Assignment module ID (from mod/assign/view.php?id=XXXXX)
+- `MOODLE_GRADE_ITEM_ID`: Grade item ID for API updates (found via MoodleIntegration.py)
+- **Note**: The email prefix in `STUDENT_EMAILS` (before @) is used as the Moodle username
+
 ## Security Notes
 
 - Never commit `config.py` to version control
 - Keep all API keys and secrets secure
 - Use environment variables for production deployments
-- Regularly rotate API keys and client secrets
+- Regularly rotate API keys, client secrets, and web service tokens
 - Review Azure AD permissions periodically
+- Secure Moodle web service tokens like passwords
+- Use dedicated service accounts with minimal permissions
+- Enable Moodle web service IP restrictions if possible
 
 ## Logging
 
@@ -365,6 +480,15 @@ Log entries include timestamps, severity levels, and detailed operation informat
 ## Output Files
 
 After running the grading system, you'll find the following outputs:
+
+### HTML Grade Reports (New!)
+- **Location**: `cloned_repos/[repo-name]/result.html`
+- **Content**: Responsive HTML version of grade reports
+- **Features**:
+  - Mobile-friendly design
+  - Color-coded milestone scores
+  - Organized by commit/milestone
+  - Easy to share via web or email
 
 ### Individual Grade Reports
 - **Location**: `cloned_repos/[repo-name]/result.txt`
@@ -399,11 +523,21 @@ Grade: B (Good)
 --------------------------------------------------------------------------------
 ```
 
+### Moodle Upload Results
+- **Location**: `cloned_repos/moodle_update_results.txt`
+- **Content**: Results from Moodle grade upload
+- **Includes**:
+  - Total students processed
+  - Success/failure counts
+  - Detailed status for each student
+  - Moodle username mapping
+
 This summary file is useful for:
 - Quick overview of all student scores
 - Mapping GitHub usernames to repositories
 - Grade book imports
 - Class statistics
+- Moodle grade upload preparation
 
 ## GitHub Username Extraction
 
@@ -454,6 +588,16 @@ If students are skipped:
 - Verify that `result.txt` exists in their repository directory
 - Check file encoding (should be UTF-8)
 - Review logs for specific error messages
+
+### Moodle Integration Issues
+
+If Moodle grade upload fails:
+- Verify web services are enabled in Moodle admin panel
+- Check that your token has `core_grades_update_grades` permission
+- Ensure student usernames match Moodle (use email prefix)
+- Review `moodle_update_results.txt` for specific errors
+- Test connection with `python MoodleIntegration.py`
+- See [MOODLE_SETUP.md](MOODLE_SETUP.md) for detailed troubleshooting
 
 ## License
 
