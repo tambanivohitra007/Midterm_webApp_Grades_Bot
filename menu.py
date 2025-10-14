@@ -40,13 +40,14 @@ class GradingMenu:
         print("─" * 80)
         print()
         print("  [1] Grade All Students")
-        print("  [2] Send Teams Messages")
-        print("  [3] Verify Email Mappings")
-        print("  [4] View Student Summary")
-        print("  [5] View Configuration")
-        print("  [6] Refresh Status")
-        print("  [7] Open Config File")
-        print("  [8] Exit")
+        print("  [2] Upload Grades to Moodle")
+        print("  [3] Send Teams Messages")
+        print("  [4] Verify Email Mappings")
+        print("  [5] View Student Summary")
+        print("  [6] View Configuration")
+        print("  [7] Refresh Status")
+        print("  [8] Open Config File")
+        print("  [9] Exit")
         print()
         print("─" * 80)
 
@@ -80,6 +81,16 @@ class GradingMenu:
                 print(f"  Students Graded: {graded_count}")
             else:
                 print(f"  Students Graded: 0")
+
+            # Check Moodle configuration
+            try:
+                from config import MOODLE_URL, MOODLE_TOKEN
+                if MOODLE_URL and MOODLE_TOKEN:
+                    print(f"  Moodle Integration: ✅ Configured")
+                else:
+                    print(f"  Moodle Integration: ⚠️  Not configured")
+            except ImportError:
+                print(f"  Moodle Integration: ⚠️  Not configured")
 
             print("─" * 80)
 
@@ -133,6 +144,27 @@ class GradingMenu:
 
         if confirm == 'y':
             self.run_script("Main.py", "GRADING ALL STUDENTS")
+        else:
+            print("Operation cancelled.")
+
+    def upload_grades_to_moodle(self):
+        """Upload grades to Moodle"""
+        summary_file = os.path.join("cloned_repos", "student_summary.txt")
+
+        if not os.path.exists(summary_file):
+            print("\nError: No grading results found!")
+            print("   Please run grading first (Option 1).")
+            return
+
+        print("\n⚠This will upload student grades to Moodle.")
+        print("   Make sure you have:")
+        print("   - Configured Moodle credentials in config.py")
+        print("   - Reviewed the grades in student_summary.txt")
+        print("   - Uncommented student emails in config.py STUDENT_EMAILS")
+        confirm = input("\nContinue? (y/n): ").strip().lower()
+
+        if confirm == 'y':
+            self.run_script("MoodleIntegration.py", "UPLOADING GRADES TO MOODLE")
         else:
             print("Operation cancelled.")
 
@@ -248,7 +280,7 @@ class GradingMenu:
             self.show_menu()
 
             try:
-                choice = input("Select an option (1-8): ").strip()
+                choice = input("Select an option (1-9): ").strip()
 
                 if choice == '1':
                     self.grade_all_students()
@@ -257,41 +289,47 @@ class GradingMenu:
                     self.show_banner()
 
                 elif choice == '2':
-                    self.send_teams_messages()
+                    self.upload_grades_to_moodle()
                     self.pause()
                     self.clear_screen()
                     self.show_banner()
 
                 elif choice == '3':
-                    self.verify_mappings()
+                    self.send_teams_messages()
                     self.pause()
                     self.clear_screen()
                     self.show_banner()
 
                 elif choice == '4':
-                    self.view_summary()
+                    self.verify_mappings()
                     self.pause()
                     self.clear_screen()
                     self.show_banner()
 
                 elif choice == '5':
-                    self.view_configuration()
+                    self.view_summary()
                     self.pause()
                     self.clear_screen()
                     self.show_banner()
 
                 elif choice == '6':
+                    self.view_configuration()
+                    self.pause()
+                    self.clear_screen()
+                    self.show_banner()
+
+                elif choice == '7':
                     self.clear_screen()
                     self.show_banner()
                     print("\nStatus refreshed!")
 
-                elif choice == '7':
+                elif choice == '8':
                     self.open_config_file()
                     self.pause()
                     self.clear_screen()
                     self.show_banner()
 
-                elif choice == '8':
+                elif choice == '9':
                     print("\n" + "=" * 80)
                     print("Thank you for using Student Grading System!".center(80))
                     print("=" * 80)
@@ -300,7 +338,7 @@ class GradingMenu:
 
                 else:
                     print(f"\nInvalid option: {choice}")
-                    print("   Please select a number between 1 and 8.")
+                    print("   Please select a number between 1 and 9.")
                     self.pause()
                     self.clear_screen()
                     self.show_banner()
