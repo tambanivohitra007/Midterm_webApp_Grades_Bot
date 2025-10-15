@@ -4,11 +4,11 @@ Verification script to check if all student repositories are mapped to emails.
 
 import sys
 import io
+from github import Github
 
 # Fix encoding for Windows console
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-from github import Github
 from config import (
     GITHUB_TOKEN,
     ORG_NAME,

@@ -188,11 +188,14 @@ class GradingMenu:
         self.run_script("verify_mappings.py", "VERIFYING EMAIL MAPPINGS")
 
     def view_summary(self):
-        """View student summary"""
-        summary_file = os.path.join("cloned_repos", "student_summary.txt")
+        """View student summary - read from individual result files"""
+        import re
+        from datetime import datetime
 
-        if not os.path.exists(summary_file):
-            print("\nError: Student summary not found!")
+        output_dir = "cloned_repos"
+
+        if not os.path.exists(output_dir):
+            print("\nError: No grading results found!")
             print("   Please run grading first.")
             return
 
@@ -202,8 +205,86 @@ class GradingMenu:
         print()
 
         try:
-            with open(summary_file, 'r', encoding='utf-8') as f:
-                print(f.read())
+            # Read grades from individual result files
+            students = []
+
+            for repo_name in os.listdir(output_dir):
+                repo_path = os.path.join(output_dir, repo_name)
+
+                # Skip if not a directory
+                if not os.path.isdir(repo_path):
+                    continue
+
+                # Look for result files
+                result_file = os.path.join(repo_path, "result.txt")
+                if not os.path.exists(result_file):
+                    result_file = os.path.join(repo_path, "result.html")
+
+                if not os.path.exists(result_file):
+                    continue
+
+                # Read and parse the result file
+                try:
+                    with open(result_file, 'r', encoding='utf-8', errors='replace') as f:
+                        content = f.read()
+
+                    # Extract information (handle both HTML and plain text)
+                    github_username = "Unknown"
+                    # Try HTML format first: <strong>GitHub Username:</strong> @username
+                    username_match = re.search(r'<strong>GitHub Username:</strong>\s*@?([^\s<]+)', content)
+                    if not username_match:
+                        # Fallback to plain text: GitHub Username: @username
+                        username_match = re.search(r'GitHub Username:\s*@?([^\s\n<]+)', content)
+                    if username_match:
+                        github_username = username_match.group(1)
+
+                    final_score = 0.0
+                    # Try HTML format: FINAL TOTAL SCORE: 88.76/100 pts
+                    score_match = re.search(r'FINAL TOTAL SCORE:\s*([\d.]+)/100', content)
+                    if not score_match:
+                        # Fallback to plain text: Final Score: 88.76/100
+                        score_match = re.search(r'Final Score:\s*([\d.]+)\s*/\s*100', content)
+                    if score_match:
+                        final_score = float(score_match.group(1))
+
+                    grade = "N/A"
+                    # Try HTML format: FINAL GRADE: A (Excellent)
+                    grade_match = re.search(r'FINAL GRADE:\s*([^<\n]+)', content)
+                    if not grade_match:
+                        # Fallback to plain text: Grade: A (Excellent)
+                        grade_match = re.search(r'Grade:\s*([^\n<]+)', content)
+                    if grade_match:
+                        grade = grade_match.group(1).strip()
+
+                    students.append({
+                        'repo_name': repo_name,
+                        'github_username': github_username,
+                        'final_score': final_score,
+                        'grade': grade
+                    })
+
+                except Exception as e:
+                    print(f"Error reading {repo_name}: {e}")
+                    continue
+
+            # Display summary
+            if not students:
+                print("No graded students found.")
+            else:
+                print(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                print("=" * 80)
+                print()
+
+                for student in students:
+                    print(f"Repository: {student['repo_name']}")
+                    print(f"GitHub Username: @{student['github_username']}")
+                    print(f"Final Score: {student['final_score']:.2f}/100")
+                    print(f"Grade: {student['grade']}")
+                    print("-" * 80)
+                    print()
+
+                print(f"Total students: {len(students)}")
+
         except Exception as e:
             print(f"Error reading summary: {e}")
 
