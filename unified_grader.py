@@ -78,10 +78,11 @@ class UnifiedGradingMenu:
         print()
         print("  [1] Grade All Students (use existing repos)")
         print("  [2] Grade All Students (pull latest changes)")
-        print("  [3] Upload Grades to Moodle")
-        print("  [4] Send Teams Notifications")
-        print("  [5] View Student Summary")
-        print("  [6] Back to Main Menu")
+        print("  [3] Grade Specific Students (selective grading)")
+        print("  [4] Upload Grades to Moodle")
+        print("  [5] Send Teams Notifications")
+        print("  [6] View Student Summary")
+        print("  [7] Back to Main Menu")
         print()
         print("─" * 80)
     
@@ -233,7 +234,7 @@ def handle_laravel_menu(menu):
     """Handle Laravel Event Management sub-menu"""
     while True:
         menu.show_laravel_menu()
-        choice = input("Select an option (1-6): ").strip()
+        choice = input("Select an option (1-7): ").strip()
         
         if choice == '1':
             # Grade all students (use existing repos)
@@ -262,10 +263,57 @@ def handle_laravel_menu(menu):
             menu.show_banner()
         
         elif choice == '3':
+            # Grade specific students (selective grading)
+            print("\n📋 SELECTIVE GRADING")
+            print("=" * 70)
+            print("Enter GitHub usernames (without repo prefix) separated by spaces.")
+            print("Example: ndrewpk p-e-koko glad1223")
+            print()
+            students = input("Students to grade: ").strip()
+            
+            if not students:
+                print("❌ No students specified. Operation cancelled.")
+                menu.pause()
+                menu.clear_screen()
+                menu.show_banner()
+                continue
+            
+            # Options
+            print("\n⚙️ OPTIONS:")
+            pull = input("Pull latest changes? (y/n): ").strip().lower() == 'y'
+            skip_teams = input("Skip Teams notifications? (y/n): ").strip().lower() == 'y'
+            skip_moodle = input("Skip Moodle upload? (y/n): ").strip().lower() == 'y'
+            
+            # Build command
+            args = ["--students"] + students.split()
+            if pull:
+                args.append("--update")
+            if skip_teams:
+                args.append("--skip-teams")
+            if skip_moodle:
+                args.append("--skip-moodle")
+            
+            # Confirm
+            print(f"\n📊 Summary:")
+            print(f"   Students: {students}")
+            print(f"   Pull changes: {'Yes' if pull else 'No'}")
+            print(f"   Send Teams: {'No' if skip_teams else 'Yes'}")
+            print(f"   Upload Moodle: {'No' if skip_moodle else 'Yes'}")
+            confirm = input("\nContinue? (y/n): ").strip().lower()
+            
+            if confirm == 'y':
+                menu.run_script("Laravel_grader.py", args=args, description="SELECTIVE GRADING")
+            else:
+                print("Operation cancelled.")
+            menu.pause()
+            menu.clear_screen()
+            menu.show_banner()
+        
+        elif choice == '4':
             # Upload grades to Moodle
             if not os.path.exists("cloned_repos"):
                 print("\n❌ Error: No grading results found!")
-                print("   Please run grading first (Option 1 or 2).")
+                print("   Please run grading first (Option 1, 2, or 3).")
             else:
                 print("\n⚠️ This will upload Laravel student grades to Moodle.")
                 print("   Make sure you have:")
@@ -280,7 +328,7 @@ def handle_laravel_menu(menu):
             menu.clear_screen()
             menu.show_banner()
         
-        elif choice == '4':
+        elif choice == '5':
             # Send Teams notifications
             if not os.path.exists("cloned_repos"):
                 print("\n❌ Error: No grading results found!")
@@ -296,14 +344,14 @@ def handle_laravel_menu(menu):
             menu.clear_screen()
             menu.show_banner()
         
-        elif choice == '5':
+        elif choice == '6':
             # View student summary
             view_laravel_summary()
             menu.pause()
             menu.clear_screen()
             menu.show_banner()
         
-        elif choice == '6':
+        elif choice == '7':
             # Back to main menu
             menu.clear_screen()
             menu.show_banner()
@@ -311,7 +359,7 @@ def handle_laravel_menu(menu):
         
         else:
             print(f"\n❌ Invalid option: {choice}")
-            print("   Please select a number between 1 and 6.")
+            print("   Please select a number between 1 and 7.")
             menu.pause()
             menu.clear_screen()
             menu.show_banner()

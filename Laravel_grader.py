@@ -252,9 +252,23 @@ def check_views(base):
     return score, remarks
 
 def check_readme(base):
-    path = os.path.join(base, 'README.md')
-    if not os.path.exists(path): return 0, ['README.md missing']
-    content = read_file(path)
+    # Check both the Laravel project directory and the repository root
+    readme_paths = [
+        os.path.join(base, 'README.md'),           # Laravel project directory
+        os.path.join(base, '..', 'README.md'),     # Repository root (one level up)
+    ]
+    
+    content = ''
+    readme_found = False
+    
+    for path in readme_paths:
+        if os.path.exists(path):
+            content += read_file(path) + ' '
+            readme_found = True
+    
+    if not readme_found:
+        return 0, ['README.md missing']
+    
     score = 0
     if 'overlap' in content: score += 3
     if 'capacity' in content: score += 3
@@ -721,16 +735,33 @@ def grade_project(repo, path):
 
 # --- EXECUTION ---
 
-def main(update_repos=False):
+def main(update_repos=False, student_filter=None, skip_teams=False, skip_moodle=False):
     """
     Main grading function.
     
     Args:
         update_repos: If True, pull latest changes for existing repos. 
                      If False (default), skip pulling and use existing code.
+        student_filter: List of GitHub usernames to grade. If None, grade all students.
+        skip_teams: If True, skip sending Teams notifications.
+        skip_moodle: If True, skip uploading grades to Moodle.
     """
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     repos = [r for r in org.get_repos() if r.name.startswith(ASSIGNMENT_REPO_PREFIX)]
+    
+    # Filter repos if student_filter is provided
+    if student_filter:
+        filtered_repos = []
+        for repo in repos:
+            student_username = repo.name.replace(ASSIGNMENT_REPO_PREFIX, "")
+            if student_username in student_filter:
+                filtered_repos.append(repo)
+        repos = filtered_repos
+        print(f"\n[FILTER] Grading only {len(repos)} student(s): {', '.join(student_filter)}")
+        if len(repos) == 0:
+            print("[ERROR] No matching repositories found for the specified students!")
+            print(f"[INFO] Looking for repos starting with: {ASSIGNMENT_REPO_PREFIX}")
+            return
     
     for repo in repos:
         print(f'\n{"="*70}')
@@ -786,12 +817,18 @@ def main(update_repos=False):
             # Extract student username from repo name
             student_username = repo.name.replace(ASSIGNMENT_REPO_PREFIX, "")
             
-            # Send Teams notification
-            print(f'\n[NOTIFICATION] Sending notifications for {student_username}...')
-            send_teams_notification(repo.name, score, html_report)
+            # Send Teams notification (unless skipped)
+            if not skip_teams:
+                print(f'\n[NOTIFICATION] Sending notifications for {student_username}...')
+                send_teams_notification(repo.name, score, html_report)
+            else:
+                print(f'\n[SKIP] Teams notification skipped for {student_username}')
             
-            # Upload grade to Moodle
-            upload_grade_to_moodle(student_username, score, repo.name)
+            # Upload grade to Moodle (unless skipped)
+            if not skip_moodle:
+                upload_grade_to_moodle(student_username, score, repo.name)
+            else:
+                print(f'[SKIP] Moodle upload skipped for {student_username}')
             
         except Exception as e:
             print(f"[ERROR] Failed to grade project: {e}")
@@ -809,9 +846,21 @@ if __name__ == '__main__':
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Examples:
+  # Grade all students
   python Laravel_grader.py              # Grade using existing repos (no pull)
   python Laravel_grader.py --update     # Grade and pull latest changes
-  python Laravel_grader.py --pull       # Same as --update
+  
+  # Grade specific students only
+  python Laravel_grader.py --students ndrewpk p-e-koko
+  python Laravel_grader.py -s glad1223 --update
+  
+  # Skip notifications/uploads
+  python Laravel_grader.py --skip-teams              # Grade but don't send Teams messages
+  python Laravel_grader.py --skip-moodle             # Grade but don't upload to Moodle
+  python Laravel_grader.py --skip-teams --skip-moodle  # Only generate reports
+  
+  # Combine filters (re-grade one student and send only Teams notification)
+  python Laravel_grader.py -s p-e-koko --skip-moodle --update
         '''
     )
     parser.add_argument(
@@ -820,6 +869,30 @@ Examples:
         dest='update_repos',
         help='Pull latest changes from GitHub for existing repositories'
     )
+    parser.add_argument(
+        '--students', '-s',
+        nargs='+',
+        dest='student_filter',
+        metavar='USERNAME',
+        help='Grade only specific students (provide GitHub usernames without repo prefix)'
+    )
+    parser.add_argument(
+        '--skip-teams',
+        action='store_true',
+        dest='skip_teams',
+        help='Skip sending Teams notifications'
+    )
+    parser.add_argument(
+        '--skip-moodle',
+        action='store_true',
+        dest='skip_moodle',
+        help='Skip uploading grades to Moodle'
+    )
     
     args = parser.parse_args()
-    main(update_repos=args.update_repos)
+    main(
+        update_repos=args.update_repos,
+        student_filter=args.student_filter,
+        skip_teams=args.skip_teams,
+        skip_moodle=args.skip_moodle
+    )
