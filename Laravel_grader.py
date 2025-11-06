@@ -2,10 +2,21 @@
 # General Laravel Auto-Grader (for Event Management System or similar projects)
 
 import os, re, json, io, sys
+from pathlib import Path
 from git import Repo
 from github import Github
 from datetime import datetime
 from openai import OpenAI
+
+# Import test runner
+try:
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'Laravel'))
+    from copy_and_run_tests import LaravelTestRunner
+    TEST_RUNNER_AVAILABLE = False  # ⭐ TEMPORARILY DISABLED - PHP/Composer not available
+    print("[INFO] Functionality tests disabled. Using static analysis only.")
+except ImportError:
+    TEST_RUNNER_AVAILABLE = False
+    print("[WARNING] Test runner not available. Install requirements or check Laravel/copy_and_run_tests.py")
 
 # --- CONFIG ---
 from config import (
@@ -22,6 +33,19 @@ org = g.get_organization(ORG_NAME)
 
 # --- RUBRIC ---
 RUBRIC = {
+    "Models": 15,
+    "Controllers": 15,
+    "Migrations": 10,
+    "Routes": 8,
+    "Views": 8,
+    "Constraint Logic": 10,
+    "Documentation": 8,
+    "Commits": 10,
+    "Functionality Tests": 30,  # PHPUnit tests (if available)
+}
+
+# Rubric without tests (for fallback when tests can't run)
+RUBRIC_NO_TESTS = {
     "Models": 20,
     "Controllers": 20,
     "Migrations": 15,
@@ -267,9 +291,47 @@ def generate_html_report(repo_name, results, total_score, local_path):
                     output.append(f'<li>{suggestions}</li>')
                 output.append('</ul></div>')
             output.append('</div>')
+        elif category == "Functionality Tests":
+            # Special handling for functionality tests
+            score = details.get('score', 0)
+            max_score = details.get('max_score', RUBRIC.get(category, 30))
+            test_passed = details.get('test_passed', 0)
+            test_total = details.get('test_total', 0)
+            test_failed = details.get('test_failed', 0)
+            pass_rate = details.get('pass_rate', '0%')
+            
+            percentage = (score / max_score * 100) if max_score > 0 else 0
+            
+            if percentage >= 80:
+                score_class = 'score-excellent'
+                progress_class = 'progress-excellent'
+            elif percentage >= 60:
+                score_class = 'score-good'
+                progress_class = 'progress-good'
+            elif percentage >= 40:
+                score_class = 'score-fair'
+                progress_class = 'progress-fair'
+            else:
+                score_class = 'score-poor'
+                progress_class = 'progress-poor'
+            
+            output.append('<div class="category" style="border-left-color: #28a745;">')
+            output.append(f'<h2>🧪 {category}</h2>')
+            output.append(f'<p class="{score_class}">Score: {score}/{max_score} pts ({percentage:.1f}%)</p>')
+            output.append(f'<p><strong>PHPUnit Tests:</strong> {test_passed}/{test_total} passed ({pass_rate})</p>')
+            if test_failed > 0:
+                output.append(f'<p style="color: #dc3545;"><strong>Failed:</strong> {test_failed} tests</p>')
+            output.append(f'<div class="progress-bar"><div class="progress-fill {progress_class}" style="width: {percentage}%;"></div></div>')
+            
+            if details.get('remarks'):
+                output.append('<ul>')
+                for remark in details.get('remarks', []):
+                    output.append(f'<li>{remark}</li>')
+                output.append('</ul>')
+            output.append('</div>')
         else:
             score = details.get('score', 0)
-            max_score = RUBRIC.get(category, 0)
+            max_score = RUBRIC.get(category, RUBRIC_NO_TESTS.get(category, 0))
             percentage = (score / max_score * 100) if max_score > 0 else 0
             
             if percentage >= 80:
@@ -351,12 +413,81 @@ def ai_feedback(base):
     except:
         return {"summary": "AI feedback error", "suggestions": []}
 
+# --- FUNCTIONALITY TESTING ---
+
+def run_functionality_tests(laravel_path):
+    """
+    Run PHPUnit tests on the Laravel project and return results
+    
+    Args:
+        laravel_path: Path to the Laravel project directory
+    
+    Returns:
+        dict: Test results with score and remarks, or None if tests couldn't run
+    """
+    if not TEST_RUNNER_AVAILABLE:
+        print("[SKIP] Test runner not available")
+        return None
+    
+    try:
+        print("\n[TESTING] Running PHPUnit functionality tests...")
+        
+        # Path to test suite
+        test_suite_path = Path(__file__).parent / 'Laravel' / 'tests'
+        
+        if not test_suite_path.exists():
+            print(f"[SKIP] Test suite not found at: {test_suite_path}")
+            return None
+        
+        # Create test runner and execute tests
+        runner = LaravelTestRunner(test_suite_path, Path(laravel_path))
+        report = runner.run_full_test_suite()
+        
+        if report and report['summary']['total_tests'] > 0:
+            score = report['summary']['score']
+            passed = report['summary']['passed']
+            total = report['summary']['total_tests']
+            failed = report['summary']['failed']
+            
+            return {
+                'score': score,
+                'max_score': 100,
+                'passed': passed,
+                'total': total,
+                'failed': failed,
+                'remarks': [
+                    f"✓ {passed} tests passed",
+                    f"✗ {failed} tests failed" if failed > 0 else "All tests passed!",
+                    f"Pass rate: {score}%"
+                ],
+                'details': report.get('test_details', [])
+            }
+        else:
+            print("[SKIP] Tests could not run or no tests executed")
+            return None
+            
+    except Exception as e:
+        print(f"[ERROR] Failed to run functionality tests: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
 # --- MAIN ---
 
 def grade_project(repo, path):
     results = {}
     total = 0
-    max_possible = sum(RUBRIC.values())  # Calculate total possible points from rubric
+    
+    # Try to run functionality tests first
+    test_results = run_functionality_tests(path)
+    tests_ran = test_results is not None
+    
+    # Choose appropriate rubric based on whether tests ran
+    current_rubric = RUBRIC if tests_ran else RUBRIC_NO_TESTS
+    max_possible = sum(current_rubric.values())
+    
+    print(f"\n[GRADING] Using rubric: {'WITH' if tests_ran else 'WITHOUT'} functionality tests")
+    print(f"[INFO] Maximum possible points: {max_possible}")
     
     funcs = [
         ("Models", check_models),
@@ -375,6 +506,24 @@ def grade_project(repo, path):
     commit_score, remarks = check_commits(repo)
     total += commit_score
     results['Commits'] = {"score": commit_score, "remarks": remarks}
+
+    # Add functionality test results if available
+    if tests_ran and test_results:
+        # Calculate weighted score based on RUBRIC
+        functionality_weight = current_rubric.get('Functionality Tests', 30)
+        test_score = round((test_results['score'] / 100) * functionality_weight)
+        
+        results['Functionality Tests'] = {
+            "score": test_score,
+            "max_score": functionality_weight,
+            "test_passed": test_results['passed'],
+            "test_total": test_results['total'],
+            "test_failed": test_results['failed'],
+            "pass_rate": f"{test_results['score']}%",
+            "remarks": test_results['remarks']
+        }
+        total += test_score
+        print(f"[TEST SCORE] {test_results['passed']}/{test_results['total']} tests passed = {test_score}/{functionality_weight} points")
 
     ai = ai_feedback(path)
     results['AI Review'] = ai
