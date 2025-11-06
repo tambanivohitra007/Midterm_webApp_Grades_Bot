@@ -324,6 +324,76 @@ def check_commits(repo):
 
 # --- HTML REPORT GENERATION ---
 
+def format_ai_feedback_html(ai_data):
+    """
+    Format AI feedback dictionary into readable HTML.
+    Handles nested dictionaries and lists gracefully.
+    """
+    html_parts = []
+    
+    if not ai_data or not isinstance(ai_data, dict):
+        return "<p>No AI feedback available</p>"
+    
+    def format_value(value, indent_level=0):
+        """Recursively format values into HTML"""
+        indent = "  " * indent_level
+        
+        if isinstance(value, dict):
+            result = []
+            for key, val in value.items():
+                # Format key: remove underscores, title case
+                formatted_key = key.replace('_', ' ').title()
+                result.append(f'{indent}<dt><strong>{formatted_key}:</strong></dt>')
+                result.append(f'{indent}<dd>{format_value(val, indent_level + 1)}</dd>')
+            return '<dl style="margin: 10px 0;">' + ''.join(result) + '</dl>'
+        
+        elif isinstance(value, list):
+            if not value:
+                return '<em>None</em>'
+            result = []
+            for item in value:
+                if isinstance(item, (dict, list)):
+                    result.append(f'<li>{format_value(item, indent_level + 1)}</li>')
+                else:
+                    result.append(f'<li>{str(item)}</li>')
+            return '<ul style="margin: 5px 0; padding-left: 20px;">' + ''.join(result) + '</ul>'
+        
+        elif isinstance(value, str):
+            # Convert newlines to <br> for better formatting
+            return value.replace('\n', '<br>')
+        
+        else:
+            return str(value)
+    
+    # Handle summary
+    if 'summary' in ai_data:
+        summary = ai_data['summary']
+        if isinstance(summary, str):
+            html_parts.append(f'<div class="summary"><strong>Summary:</strong><br>{summary}</div>')
+        elif isinstance(summary, dict):
+            html_parts.append(f'<div class="summary"><strong>Summary:</strong>{format_value(summary)}</div>')
+        else:
+            html_parts.append(f'<div class="summary"><strong>Summary:</strong><br>{str(summary)}</div>')
+    
+    # Handle suggestions
+    if 'suggestions' in ai_data:
+        suggestions = ai_data['suggestions']
+        html_parts.append('<div class="suggestions"><strong>Suggestions:</strong>')
+        html_parts.append(format_value(suggestions))
+        html_parts.append('</div>')
+    
+    # Handle any other keys that aren't summary or suggestions
+    other_keys = [k for k in ai_data.keys() if k not in ['summary', 'suggestions']]
+    if other_keys:
+        for key in other_keys:
+            formatted_key = key.replace('_', ' ').title()
+            html_parts.append(f'<div class="summary"><strong>{formatted_key}:</strong>')
+            html_parts.append(format_value(ai_data[key]))
+            html_parts.append('</div>')
+    
+    return ''.join(html_parts)
+
+
 def generate_html_report(repo_name, results, total_score, local_path, tests_ran=False):
     """Generate HTML report for Laravel grading"""
     # Use appropriate rubric based on whether tests ran
@@ -349,8 +419,13 @@ def generate_html_report(repo_name, results, total_score, local_path, tests_ran=
     output.append('.final-score { background: #fff; padding: 25px; border-radius: 8px; text-align: center; margin-top: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }')
     output.append('.final-score h2 { margin: 0; font-size: 2.5em; }')
     output.append('.ai-review { background: #f8f9fa; border-left: 4px solid #764ba2; }')
-    output.append('.ai-review .summary { background: #fff; padding: 15px; margin: 10px 0; border-radius: 4px; }')
-    output.append('.ai-review .suggestions { background: #fff; padding: 15px; margin: 10px 0; border-radius: 4px; }')
+    output.append('.ai-review .summary { background: #fff; padding: 15px; margin: 10px 0; border-radius: 4px; line-height: 1.6; }')
+    output.append('.ai-review .suggestions { background: #fff; padding: 15px; margin: 10px 0; border-radius: 4px; line-height: 1.6; }')
+    output.append('.ai-review dl { margin: 10px 0; }')
+    output.append('.ai-review dt { font-weight: bold; color: #495057; margin-top: 10px; }')
+    output.append('.ai-review dd { margin-left: 20px; margin-bottom: 10px; color: #6c757d; }')
+    output.append('.ai-review ul { margin: 5px 0; padding-left: 25px; }')
+    output.append('.ai-review li { margin: 8px 0; color: #495057; line-height: 1.5; }')
     output.append('.progress-bar { background: #e9ecef; border-radius: 10px; height: 20px; margin: 10px 0; overflow: hidden; }')
     output.append('.progress-fill { height: 100%; transition: width 0.3s ease; }')
     output.append('.progress-excellent { background: linear-gradient(90deg, #28a745, #20c997); }')
@@ -370,16 +445,8 @@ def generate_html_report(repo_name, results, total_score, local_path, tests_ran=
         if category == "AI Review":
             output.append('<div class="category ai-review">')
             output.append(f'<h2>🤖 AI Review</h2>')
-            output.append(f'<div class="summary"><strong>Summary:</strong><br>{details.get("summary", "N/A")}</div>')
-            suggestions = details.get("suggestions", [])
-            if suggestions:
-                output.append(f'<div class="suggestions"><strong>Suggestions:</strong><ul>')
-                if isinstance(suggestions, list):
-                    for suggestion in suggestions:
-                        output.append(f'<li>{suggestion}</li>')
-                else:
-                    output.append(f'<li>{suggestions}</li>')
-                output.append('</ul></div>')
+            # Use the formatting function to properly display AI feedback
+            output.append(format_ai_feedback_html(details))
             output.append('</div>')
         elif category == "Functionality Tests":
             # Special handling for functionality tests
