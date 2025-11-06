@@ -522,18 +522,34 @@ def generate_html_report(repo_name, results, total_score, local_path, tests_ran=
         score_class = 'score-excellent'
         emoji = '🌟'
         grade = 'A'
-    elif total_score >= 60:
+    elif total_score >= 75:
+        score_class = 'score-excellent'
+        emoji = '👏'
+        grade = 'B+'
+    elif total_score >= 70:
         score_class = 'score-good'
         emoji = '👍'
         grade = 'B'
-    elif total_score >= 40:
+    elif total_score >= 65:
+        score_class = 'score-good'
+        emoji = '✓'
+        grade = 'C+'
+    elif total_score >= 60:
+        score_class = 'score-fair'
+        emoji = '📝'
+        grade = 'C'
+    elif total_score >= 55:
         score_class = 'score-fair'
         emoji = '⚠️'
-        grade = 'C'
+        grade = 'D+'
+    elif total_score >= 50:
+        score_class = 'score-poor'
+        emoji = '⚠️'
+        grade = 'D'
     else:
         score_class = 'score-poor'
-        emoji = '📝'
-        grade = 'D'
+        emoji = '❌'
+        grade = 'F'
     
     output.append(f'<div class="final-score">')
     output.append(f'<h2 class="{score_class}">{emoji} FINAL SCORE: {total_score}/100</h2>')
@@ -604,22 +620,34 @@ def send_teams_notification(repo_name, score, html_report_path):
             return False
         
         # Determine grade emoji and description
-        if score >= 90:
+        if score >= 80:
             grade_letter = "A"
             emoji = "🌟"
             description = "Excellent"
-        elif score >= 80:
+        elif score >= 75:
+            grade_letter = "B+"
+            emoji = "👏"
+            description = "Very Good"
+        elif score >= 70:
             grade_letter = "B"
             emoji = "👍"
             description = "Good"
-        elif score >= 70:
-            grade_letter = "C"
-            emoji = "⚠️"
+        elif score >= 65:
+            grade_letter = "C+"
+            emoji = "✓"
             description = "Satisfactory"
         elif score >= 60:
-            grade_letter = "D"
+            grade_letter = "C"
             emoji = "📝"
+            description = "Acceptable"
+        elif score >= 55:
+            grade_letter = "D+"
+            emoji = "⚠️"
             description = "Needs Improvement"
+        elif score >= 50:
+            grade_letter = "D"
+            emoji = "⚠️"
+            description = "Marginal Pass"
         else:
             grade_letter = "F"
             emoji = "❌"
@@ -639,8 +667,11 @@ def send_teams_notification(repo_name, score, html_report_path):
             authority=f"https://login.microsoftonline.com/{TENANT_ID}"
         )
         
-        # Define the scopes needed for sending messages
-        scopes = ["https://graph.microsoft.com/Chat.ReadWrite"]
+        # Define the scopes needed for sending messages and uploading files
+        scopes = [
+            "https://graph.microsoft.com/Chat.ReadWrite",
+            "https://graph.microsoft.com/Files.ReadWrite"
+        ]
         
         # Acquire token interactively (will open browser for first-time auth)
         print(f"[TEAMS] Authenticating to Microsoft Graph API...")
@@ -688,21 +719,139 @@ def send_teams_notification(repo_name, score, html_report_path):
         
         chat_id = chat_response.json()["id"]
         
-        # Step 2: Send message to the chat
+        # Step 2: Upload the HTML file as an attachment
+        print(f"[TEAMS] Uploading HTML report as attachment...")
+        
+        # Read the HTML file content
+        try:
+            with open(html_report_path, 'rb') as f:
+                file_content = f.read()
+        except Exception as e:
+            print(f"[TEAMS] ✗ Failed to read HTML report: {e}")
+            return False
+        
+        # Get file name from path
+        import os
+        file_name = os.path.basename(html_report_path)
+        file_size = len(file_content)
+        
+        # Upload file to OneDrive (required for attachments)
+        # First, create an upload session
+        upload_headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        upload_session_payload = {
+            "item": {
+                "@microsoft.graph.conflictBehavior": "rename",
+                "name": f"{student_username}_{file_name}"
+            }
+        }
+        
+        # Create upload session in user's OneDrive
+        upload_session_response = requests.post(
+            f"https://graph.microsoft.com/v1.0/me/drive/root:/GradingReports/{student_username}_{file_name}:/createUploadSession",
+            headers=upload_headers,
+            json=upload_session_payload,
+            timeout=30
+        )
+        
+        if upload_session_response.status_code not in [200, 201]:
+            print(f"[TEAMS] ✗ Failed to create upload session: {upload_session_response.status_code}")
+            print(f"         Trying direct upload method...")
+            
+            # Fallback: Try direct small file upload
+            upload_direct_headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "text/html"
+            }
+            
+            upload_response = requests.put(
+                f"https://graph.microsoft.com/v1.0/me/drive/root:/GradingReports/{student_username}_{file_name}:/content",
+                headers=upload_direct_headers,
+                data=file_content,
+                timeout=60
+            )
+            
+            if upload_response.status_code not in [200, 201]:
+                print(f"[TEAMS] ✗ Failed to upload file: {upload_response.status_code}")
+                print(f"         Sending message without attachment...")
+                uploaded_file = None
+            else:
+                uploaded_file = upload_response.json()
+                print(f"[TEAMS] ✓ File uploaded successfully")
+        else:
+            # Upload file in chunks using the upload session
+            upload_url = upload_session_response.json()["uploadUrl"]
+            
+            upload_chunk_headers = {
+                "Content-Length": str(file_size),
+                "Content-Range": f"bytes 0-{file_size-1}/{file_size}"
+            }
+            
+            chunk_response = requests.put(
+                upload_url,
+                headers=upload_chunk_headers,
+                data=file_content,
+                timeout=60
+            )
+            
+            if chunk_response.status_code not in [200, 201]:
+                print(f"[TEAMS] ✗ Failed to upload file chunks: {chunk_response.status_code}")
+                uploaded_file = None
+            else:
+                uploaded_file = chunk_response.json()
+                print(f"[TEAMS] ✓ File uploaded successfully")
+        
+        # Step 3: Create sharing link for the uploaded file
+        sharing_link = None
+        if uploaded_file and 'id' in uploaded_file:
+            try:
+                sharing_payload = {
+                    "type": "view",
+                    "scope": "organization"
+                }
+                
+                sharing_response = requests.post(
+                    f"https://graph.microsoft.com/v1.0/me/drive/items/{uploaded_file['id']}/createLink",
+                    headers=upload_headers,
+                    json=sharing_payload,
+                    timeout=30
+                )
+                
+                if sharing_response.status_code in [200, 201]:
+                    sharing_link = sharing_response.json().get('link', {}).get('webUrl')
+                    print(f"[TEAMS] ✓ Sharing link created")
+            except Exception as e:
+                print(f"[TEAMS] Warning: Could not create sharing link: {e}")
+        
+        # Step 4: Send message to the chat with link to the report
         print(f"[TEAMS] Sending grade notification...")
+        
+        message_content = f"""
+            <h2>{emoji} Laravel Project Grading Results</h2>
+            <p><strong>Repository:</strong> {repo_name}</p>
+            <p><strong>Final Score:</strong> {score}/100</p>
+            <p><strong>Grade:</strong> {grade_letter} ({description})</p>
+            <p><strong>Graded on:</strong> {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+            <hr>
+        """
+        
+        if sharing_link:
+            message_content += f"""
+                <p>📄 <strong>Detailed Report:</strong> <a href="{sharing_link}">View HTML Report</a></p>
+                <p><em>Click the link above to view your detailed grading report with feedback and suggestions.</em></p>
+            """
+        else:
+            message_content += f"""
+                <p>📄 <strong>Report Status:</strong> Report generated but upload failed. Please contact your instructor.</p>
+            """
+        
         message_payload = {
             "body": {
                 "contentType": "html",
-                "content": f"""
-                    <h2>{emoji} Laravel Project Grading Results</h2>
-                    <p><strong>Repository:</strong> {repo_name}</p>
-                    <p><strong>Final Score:</strong> {score}/100</p>
-                    <p><strong>Grade:</strong> {grade_letter} ({description})</p>
-                    <p><strong>Graded on:</strong> {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
-                    <hr>
-                    <p>Your detailed grading report is attached. Please review the feedback and suggestions to improve your code.</p>
-                    <p><em>Report location: {html_report_path}</em></p>
-                """
+                "content": message_content
             }
         }
         
@@ -715,6 +864,8 @@ def send_teams_notification(repo_name, score, html_report_path):
         
         if message_response.status_code in [200, 201]:
             print(f"[TEAMS] ✓ Message sent to {student_email}")
+            if sharing_link:
+                print(f"[TEAMS] ✓ Report accessible at: {sharing_link}")
             return True
         else:
             print(f"[TEAMS] ✗ Failed to send message: {message_response.status_code}")
@@ -788,8 +939,8 @@ def upload_grade_to_moodle(student_username, score, repo_name):
             'itemnumber': 0,
             'grades[0][studentid]': student_id,
             'grades[0][grade]': score,
-            'itemdetails[itemname]': 'Laravel Event Management Project',
-            'itemdetails[idnumber]': LARAVEL_MOODLE_GRADE_ITEM_ID
+            'itemdetails[itemname]': 'LaravelEventManagement',
+            'itemdetails[idnumber]': str(LARAVEL_MOODLE_GRADE_ITEM_ID)
         })
         
         if result is not None:
