@@ -9,7 +9,11 @@
       "Bash(git commit:*)",
       "Bash(git branch:*)",
       "Bash(git grep:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(python:*)",
+      "Bash(pip install flet)",
+      "Bash(timeout 3 python -c \"import flet as ft; print(''Flet imported successfully''); print(f''Flet version: {ft.__version__ if hasattr(ft, \"\"__version__\"\") else \"\"unknown\"\"}'')\")",
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []

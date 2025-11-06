@@ -352,11 +352,13 @@ python menu.py
 
 The script will:
 1. Load student data from `config.py`
-2. Read grades from `student_summary.txt`
+2. Read grades directly from individual result files (result.txt or result.html)
 3. Test Moodle connection
 4. Ask for confirmation
 5. Upload all grades in batch
 6. Save results to `cloned_repos/moodle_update_results.txt`
+
+**Note**: The system reads grades directly from individual student result files, so `student_summary.txt` is not required for Moodle upload.
 
 ### Manual Execution
 
@@ -495,13 +497,14 @@ After running the grading system, you'll find the following outputs:
 - **Content**: Detailed feedback for each milestone with scores and suggestions
 - **Includes**: GitHub username, repository info, milestone-by-milestone analysis
 
-### Student Summary
+### Student Summary (Optional)
 - **Location**: `cloned_repos/student_summary.txt`
 - **Content**: Master list of all students with their:
   - Repository name
   - GitHub username
   - Final score (out of 100)
   - Letter grade
+- **Note**: This file is generated for convenience, but the system can also read grades directly from individual result files
 
 **Example**:
 ```
@@ -537,7 +540,8 @@ This summary file is useful for:
 - Mapping GitHub usernames to repositories
 - Grade book imports
 - Class statistics
-- Moodle grade upload preparation
+
+**Important**: The menu's "View Student Summary" option and Moodle integration now read grades directly from individual result files, making this summary file optional. The file is still generated for convenience and compatibility.
 
 ## GitHub Username Extraction
 
