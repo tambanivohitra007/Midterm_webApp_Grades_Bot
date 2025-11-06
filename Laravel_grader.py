@@ -574,76 +574,151 @@ def ai_feedback(base):
 # --- TEAMS NOTIFICATION ---
 
 def send_teams_notification(repo_name, score, html_report_path):
-    """Send notification to Microsoft Teams about grading completion"""
+    """
+    Send notification to Microsoft Teams via Graph API using MSAL authentication.
+    Uses configuration from config.py (not environment variables).
+    """
     try:
-        # Check if Teams webhook URL is configured
-        teams_webhook = os.getenv('TEAMS_WEBHOOK_URL')
-        if not teams_webhook:
-            print("[SKIP] Teams webhook not configured (set TEAMS_WEBHOOK_URL environment variable)")
+        # Import required modules
+        try:
+            from msal import PublicClientApplication
+            import requests
+        except ImportError:
+            print("[SKIP] MSAL library not installed (pip install msal requests)")
             return False
         
-        # Extract student name from repo
-        student_name = repo_name.replace(ASSIGNMENT_REPO_PREFIX, "")
+        # Check if Teams is configured in config.py
+        from config import TENANT_ID, CLIENT_ID, INSTRUCTOR_EMAIL, STUDENT_EMAILS
         
-        # Determine grade color and emoji
+        if not TENANT_ID or not CLIENT_ID:
+            print("[SKIP] Teams not configured (set TENANT_ID and CLIENT_ID in config.py)")
+            return False
+        
+        # Extract student username from repo name
+        student_username = repo_name.replace(ASSIGNMENT_REPO_PREFIX, "")
+        
+        # Get student email from config
+        student_email = STUDENT_EMAILS.get(repo_name)
+        if not student_email:
+            print(f"[SKIP] No email mapping found for {repo_name} in config.py")
+            return False
+        
+        # Determine grade emoji and description
         if score >= 90:
             grade_letter = "A"
-            color = "28a745"  # Green
             emoji = "🌟"
+            description = "Excellent"
         elif score >= 80:
             grade_letter = "B"
-            color = "17a2b8"  # Blue
             emoji = "👍"
+            description = "Good"
         elif score >= 70:
             grade_letter = "C"
-            color = "ffc107"  # Yellow
             emoji = "⚠️"
+            description = "Satisfactory"
         elif score >= 60:
             grade_letter = "D"
-            color = "fd7e14"  # Orange
             emoji = "📝"
+            description = "Needs Improvement"
         else:
             grade_letter = "F"
-            color = "dc3545"  # Red
             emoji = "❌"
+            description = "Failing"
         
-        # Create Teams message card
-        message = {
-            "@type": "MessageCard",
-            "@context": "https://schema.org/extensions",
-            "summary": f"Grade for {student_name}",
-            "themeColor": color,
-            "title": f"{emoji} Laravel Project Graded - {student_name}",
-            "sections": [
+        # Read HTML report for inline display
+        try:
+            with open(html_report_path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+        except Exception as e:
+            print(f"[WARNING] Could not read HTML report: {e}")
+            html_content = f"<p>Grade: {score}/100</p>"
+        
+        # Create MSAL application for authentication
+        app = PublicClientApplication(
+            CLIENT_ID,
+            authority=f"https://login.microsoftonline.com/{TENANT_ID}"
+        )
+        
+        # Define the scopes needed for sending messages
+        scopes = ["https://graph.microsoft.com/Chat.ReadWrite"]
+        
+        # Acquire token interactively (will open browser for first-time auth)
+        print(f"[TEAMS] Authenticating to Microsoft Graph API...")
+        result = app.acquire_token_interactive(scopes=scopes)
+        
+        if "access_token" not in result:
+            print(f"[TEAMS] ✗ Authentication failed: {result.get('error_description', 'Unknown error')}")
+            return False
+        
+        access_token = result["access_token"]
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Step 1: Create or get existing chat with student
+        print(f"[TEAMS] Creating chat with {student_email}...")
+        chat_payload = {
+            "chatType": "oneOnOne",
+            "members": [
                 {
-                    "facts": [
-                        {"name": "Student:", "value": student_name},
-                        {"name": "Repository:", "value": repo_name},
-                        {"name": "Score:", "value": f"{score}/100"},
-                        {"name": "Grade:", "value": grade_letter},
-                        {"name": "Graded on:", "value": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-                    ]
-                }
-            ],
-            "potentialAction": [
+                    "@odata.type": "#microsoft.graph.aadUserConversationMember",
+                    "roles": ["owner"],
+                    "user@odata.bind": f"https://graph.microsoft.com/v1.0/users('{INSTRUCTOR_EMAIL}')"
+                },
                 {
-                    "@type": "OpenUri",
-                    "name": "View Report",
-                    "targets": [
-                        {"os": "default", "uri": f"file:///{html_report_path.replace(os.sep, '/')}"}
-                    ]
+                    "@odata.type": "#microsoft.graph.aadUserConversationMember",
+                    "roles": ["owner"],
+                    "user@odata.bind": f"https://graph.microsoft.com/v1.0/users('{student_email}')"
                 }
             ]
         }
         
-        # Send to Teams
-        response = requests.post(teams_webhook, json=message, timeout=10)
+        chat_response = requests.post(
+            "https://graph.microsoft.com/v1.0/chats",
+            headers=headers,
+            json=chat_payload,
+            timeout=30
+        )
         
-        if response.status_code == 200:
-            print(f"[TEAMS] ✓ Notification sent to Teams for {student_name}")
+        if chat_response.status_code not in [200, 201]:
+            print(f"[TEAMS] ✗ Failed to create chat: {chat_response.status_code}")
+            print(f"         Response: {chat_response.text}")
+            return False
+        
+        chat_id = chat_response.json()["id"]
+        
+        # Step 2: Send message to the chat
+        print(f"[TEAMS] Sending grade notification...")
+        message_payload = {
+            "body": {
+                "contentType": "html",
+                "content": f"""
+                    <h2>{emoji} Laravel Project Grading Results</h2>
+                    <p><strong>Repository:</strong> {repo_name}</p>
+                    <p><strong>Final Score:</strong> {score}/100</p>
+                    <p><strong>Grade:</strong> {grade_letter} ({description})</p>
+                    <p><strong>Graded on:</strong> {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+                    <hr>
+                    <p>Your detailed grading report is attached. Please review the feedback and suggestions to improve your code.</p>
+                    <p><em>Report location: {html_report_path}</em></p>
+                """
+            }
+        }
+        
+        message_response = requests.post(
+            f"https://graph.microsoft.com/v1.0/chats/{chat_id}/messages",
+            headers=headers,
+            json=message_payload,
+            timeout=30
+        )
+        
+        if message_response.status_code in [200, 201]:
+            print(f"[TEAMS] ✓ Message sent to {student_email}")
             return True
         else:
-            print(f"[TEAMS] ✗ Failed to send notification: {response.status_code}")
+            print(f"[TEAMS] ✗ Failed to send message: {message_response.status_code}")
+            print(f"         Response: {message_response.text}")
             return False
             
     except Exception as e:
@@ -653,54 +728,81 @@ def send_teams_notification(repo_name, score, html_report_path):
 # --- MOODLE INTEGRATION ---
 
 def upload_grade_to_moodle(student_username, score, repo_name):
-    """Upload grade to Moodle gradebook"""
+    """
+    Upload grade to Moodle gradebook using MoodleIntegration module.
+    Uses configuration from config.py.
+    """
     try:
         # Check if Moodle is configured
         if not MOODLE_URL or not MOODLE_TOKEN:
-            print("[SKIP] Moodle not configured")
+            print("[SKIP] Moodle not configured (set MOODLE_URL and MOODLE_TOKEN in config.py)")
             return False
         
-        # Import MoodleIntegration if available
+        # Import MoodleIntegration module (not class)
         try:
-            from MoodleIntegration import MoodleIntegration
+            import MoodleIntegration
         except ImportError:
-            print("[SKIP] MoodleIntegration module not available")
+            print("[SKIP] MoodleIntegration.py module not available")
             return False
         
-        # Initialize Moodle integration
-        moodle = MoodleIntegration(
-            MOODLE_URL,
-            MOODLE_TOKEN,
-            LARAVEL_MOODLE_COURSE_ID,
-            LARAVEL_MOODLE_ACTIVITY_ID,
-            LARAVEL_MOODLE_GRADE_ITEM_ID
-        )
-        
-        # Find student by username (GitHub username)
-        print(f"[MOODLE] Looking up student: {student_username}")
-        student = moodle.find_student_by_username(student_username)
-        
-        if not student:
-            print(f"[MOODLE] ✗ Student not found in Moodle: {student_username}")
+        # Step 1: Test Moodle connection
+        print(f"[MOODLE] Testing connection...")
+        site_info = MoodleIntegration.call_moodle_api('core_webservice_get_site_info')
+        if not site_info:
+            print("[MOODLE] ✗ Connection failed")
             return False
         
-        student_id = student['id']
+        # Step 2: Get student email from config
+        from config import STUDENT_EMAILS
+        student_email = STUDENT_EMAILS.get(repo_name)
         
-        # Upload grade
-        print(f"[MOODLE] Uploading grade {score}/100 for {student_username}...")
-        result = moodle.update_grade(student_id, score)
+        if not student_email:
+            print(f"[MOODLE] ✗ No email mapping found for {repo_name} in config.py")
+            return False
         
-        if result:
-            print(f"[MOODLE] ✓ Grade uploaded successfully")
+        # Extract Moodle username from email (e.g., "202300203" from "202300203@my.apiu.edu")
+        moodle_username = student_email.split('@')[0]
+        
+        # Step 3: Look up student by username
+        print(f"[MOODLE] Looking up student: {moodle_username} ({student_email})")
+        users = MoodleIntegration.call_moodle_api('core_user_get_users', {
+            'criteria[0][key]': 'username',
+            'criteria[0][value]': moodle_username
+        })
+        
+        if not users or 'users' not in users or len(users['users']) == 0:
+            print(f"[MOODLE] ✗ Student not found in Moodle: {moodle_username}")
+            return False
+        
+        student_id = users['users'][0]['id']
+        student_fullname = users['users'][0]['fullname']
+        print(f"[MOODLE] ✓ Found student: {student_fullname} (ID: {student_id})")
+        
+        # Step 4: Upload grade
+        print(f"[MOODLE] Uploading grade {score}/100 to grade item {LARAVEL_MOODLE_GRADE_ITEM_ID}...")
+        result = MoodleIntegration.call_moodle_api('core_grades_update_grades', {
+            'source': 'laravel_grader',
+            'courseid': LARAVEL_MOODLE_COURSE_ID,
+            'component': 'mod_assign',
+            'activityid': LARAVEL_MOODLE_ACTIVITY_ID,
+            'itemnumber': 0,
+            'grades[0][studentid]': student_id,
+            'grades[0][grade]': score,
+            'itemdetails[itemname]': 'Laravel Event Management Project',
+            'itemdetails[idnumber]': LARAVEL_MOODLE_GRADE_ITEM_ID
+        })
+        
+        if result is not None:
+            print(f"[MOODLE] ✓ Grade uploaded successfully for {student_fullname}")
             
             # Log the upload
-            log_entry = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | {student_username} | {repo_name} | {score}/100\n"
-            with open('moodle_grade_log.txt', 'a', encoding='utf-8') as f:
+            log_entry = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | {moodle_username} | {student_fullname} | {repo_name} | {score}/100\n"
+            with open('moodle_laravel_grade_log.txt', 'a', encoding='utf-8') as f:
                 f.write(log_entry)
             
             return True
         else:
-            print(f"[MOODLE] ✗ Failed to upload grade")
+            print(f"[MOODLE] ✗ Failed to upload grade (check Moodle API response)")
             return False
             
     except Exception as e:
