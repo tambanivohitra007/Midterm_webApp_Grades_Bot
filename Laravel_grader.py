@@ -34,6 +34,86 @@ RUBRIC = {
 
 # --- CHECK FUNCTIONS ---
 
+def is_laravel_project(path):
+    """Check if a directory contains a Laravel project"""
+    # Check for key Laravel indicators
+    artisan_path = os.path.join(path, 'artisan')
+    composer_path = os.path.join(path, 'composer.json')
+    public_index_path = os.path.join(path, 'public', 'index.php')
+    
+    # At least one of these must exist
+    if os.path.exists(artisan_path):
+        return True
+    if os.path.exists(composer_path):
+        # Verify it's actually a Laravel project by checking composer.json content
+        try:
+            with open(composer_path, 'r', encoding='utf-8') as f:
+                content = f.read().lower()
+                if 'laravel/framework' in content:
+                    return True
+        except:
+            pass
+    if os.path.exists(public_index_path):
+        # Check if index.php contains Laravel-specific code
+        try:
+            with open(public_index_path, 'r', encoding='utf-8') as f:
+                content = f.read().lower()
+                if 'laravel' in content or 'kernel' in content:
+                    return True
+        except:
+            pass
+    
+    return False
+
+def find_laravel_project(root_path, max_depth=5):
+    """
+    Recursively search for a Laravel project in the directory tree.
+    
+    Args:
+        root_path: The root directory to start searching from
+        max_depth: Maximum depth to search (default 5 to prevent excessive recursion)
+    
+    Returns:
+        Path to Laravel project directory if found, None otherwise
+    """
+    def search_recursive(current_path, depth=0):
+        if depth > max_depth:
+            return None
+        
+        # Check if current directory is a Laravel project
+        if is_laravel_project(current_path):
+            print(f"[FOUND] Laravel project at: {current_path}")
+            return current_path
+        
+        # Search subdirectories
+        try:
+            for item in os.listdir(current_path):
+                item_path = os.path.join(current_path, item)
+                
+                # Skip common non-project directories
+                skip_dirs = {'.git', 'node_modules', 'vendor', 'storage', '__pycache__', 
+                           '.idea', '.vscode', 'venv', 'env', '.env'}
+                if item in skip_dirs:
+                    continue
+                
+                if os.path.isdir(item_path):
+                    result = search_recursive(item_path, depth + 1)
+                    if result:
+                        return result
+        except (PermissionError, OSError) as e:
+            print(f"[WARNING] Cannot access {current_path}: {e}")
+        
+        return None
+    
+    print(f"[SEARCHING] Looking for Laravel project in: {root_path}")
+    laravel_path = search_recursive(root_path)
+    
+    if laravel_path:
+        return laravel_path
+    else:
+        print(f"[ERROR] No Laravel project found in {root_path}")
+        return None
+
 def read_file(path):
     try:
         return open(path, encoding='utf-8', errors='ignore').read().lower()
@@ -276,6 +356,8 @@ def ai_feedback(base):
 def grade_project(repo, path):
     results = {}
     total = 0
+    max_possible = sum(RUBRIC.values())  # Calculate total possible points from rubric
+    
     funcs = [
         ("Models", check_models),
         ("Controllers", check_controllers),
@@ -297,7 +379,11 @@ def grade_project(repo, path):
     ai = ai_feedback(path)
     results['AI Review'] = ai
 
-    return min(total, 100), results
+    # Scale the score to 100 points proportionally
+    # Instead of capping at 100, convert to percentage of max possible
+    final_score = round((total / max_possible) * 100)
+    
+    return final_score, results
 
 # --- EXECUTION ---
 
@@ -328,25 +414,34 @@ def main():
             except Exception as e:
                 print(f"[WARNING] Could not pull latest changes: {e}")
         
+        # Find Laravel project (might be in subdirectory)
+        laravel_path = find_laravel_project(local_path)
+        
+        if not laravel_path:
+            print(f"[SKIP] No Laravel project found in {repo.name}")
+            continue
+        
         # Grade the project
         try:
             r = Repo(local_path)
-            score, results = grade_project(r, local_path)
+            score, results = grade_project(r, laravel_path)
             
             print(f'\n[RESULT] Final Score: {score}/100')
             
-            # Save JSON report
-            json_path = os.path.join(local_path, 'grading_result.json')
+            # Save JSON report in the Laravel project directory
+            json_path = os.path.join(laravel_path, 'grading_result.json')
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(results, f, indent=2)
             print(f'[SAVED] JSON report: {json_path}')
             
-            # Generate HTML report
-            html_report = generate_html_report(repo.name, results, score, local_path)
+            # Generate HTML report in the Laravel project directory
+            html_report = generate_html_report(repo.name, results, score, laravel_path)
             print(f'[SAVED] HTML report: {html_report}')
             
         except Exception as e:
             print(f"[ERROR] Failed to grade project: {e}")
+            import traceback
+            traceback.print_exc()
             continue
     
     print(f'\n{"="*70}')
