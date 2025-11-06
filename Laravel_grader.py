@@ -2,11 +2,13 @@
 # General Laravel Auto-Grader (for Event Management System or similar projects)
 
 import os, re, json, io, sys
+import argparse
 from pathlib import Path
 from git import Repo
 from github import Github
 from datetime import datetime
 from openai import OpenAI
+import requests
 
 # Import test runner
 try:
@@ -198,15 +200,56 @@ def check_routes(base):
     return min(score, RUBRIC['Routes']), ['Routes checked']
 
 def check_views(base):
-    vdir = os.path.join(base, 'resources', 'views')
-    if not os.path.exists(vdir): return 0, ['No Blade templates found']
+    """Check for views in multiple locations"""
     score = 0
-    for root, _, files in os.walk(vdir):
-        for f in files:
-            if f.endswith('.blade.php'):
-                score += 2
-    score = min(score, RUBRIC['Views'])
-    return score, [f'{score/2} Blade templates found']
+    remarks = []
+    view_files_found = 0
+    
+    # Check traditional blade templates in resources/views
+    vdir = os.path.join(base, 'resources', 'views')
+    if os.path.exists(vdir):
+        for root, _, files in os.walk(vdir):
+            for f in files:
+                if f.endswith('.blade.php'):
+                    score += 2
+                    view_files_found += 1
+        if view_files_found > 0:
+            remarks.append(f'{view_files_found} Blade templates in resources/views')
+    
+    # Check for modern JS frameworks in resources/js
+    jsdir = os.path.join(base, 'resources', 'js')
+    js_view_count = 0
+    if os.path.exists(jsdir):
+        for root, _, files in os.walk(jsdir):
+            for f in files:
+                # Check for Vue, React, or Svelte components
+                if f.endswith(('.vue', '.jsx', '.tsx', '.svelte')):
+                    score += 2
+                    js_view_count += 1
+                    view_files_found += 1
+        if js_view_count > 0:
+            remarks.append(f'{js_view_count} JS framework components in resources/js')
+    
+    # Check for HTML files anywhere in resources
+    resources_dir = os.path.join(base, 'resources')
+    html_count = 0
+    if os.path.exists(resources_dir):
+        for root, _, files in os.walk(resources_dir):
+            for f in files:
+                if f.endswith('.html') and 'node_modules' not in root:
+                    score += 1  # Less points for plain HTML
+                    html_count += 1
+                    view_files_found += 1
+        if html_count > 0:
+            remarks.append(f'{html_count} HTML files in resources')
+    
+    # Finalize score
+    score = min(score, RUBRIC_NO_TESTS.get('Views', 10))  # Use fallback rubric value
+    
+    if view_files_found == 0:
+        return 0, ['No view templates found in resources/views or resources/js']
+    
+    return score, remarks
 
 def check_readme(base):
     path = os.path.join(base, 'README.md')
@@ -237,8 +280,11 @@ def check_commits(repo):
 
 # --- HTML REPORT GENERATION ---
 
-def generate_html_report(repo_name, results, total_score, local_path):
+def generate_html_report(repo_name, results, total_score, local_path, tests_ran=False):
     """Generate HTML report for Laravel grading"""
+    # Use appropriate rubric based on whether tests ran
+    current_rubric = RUBRIC if tests_ran else RUBRIC_NO_TESTS
+    
     output = []
     output.append('<!DOCTYPE html>')
     output.append('<html><head><meta charset="UTF-8">')
@@ -331,7 +377,8 @@ def generate_html_report(repo_name, results, total_score, local_path):
             output.append('</div>')
         else:
             score = details.get('score', 0)
-            max_score = RUBRIC.get(category, RUBRIC_NO_TESTS.get(category, 0))
+            # Use the correct rubric that was actually used for grading
+            max_score = current_rubric.get(category, 0)
             percentage = (score / max_score * 100) if max_score > 0 else 0
             
             if percentage >= 80:
@@ -412,6 +459,144 @@ def ai_feedback(base):
         return json.loads(resp.choices[0].message.content)
     except:
         return {"summary": "AI feedback error", "suggestions": []}
+
+# --- TEAMS NOTIFICATION ---
+
+def send_teams_notification(repo_name, score, html_report_path):
+    """Send notification to Microsoft Teams about grading completion"""
+    try:
+        # Check if Teams webhook URL is configured
+        teams_webhook = os.getenv('TEAMS_WEBHOOK_URL')
+        if not teams_webhook:
+            print("[SKIP] Teams webhook not configured (set TEAMS_WEBHOOK_URL environment variable)")
+            return False
+        
+        # Extract student name from repo
+        student_name = repo_name.replace(ASSIGNMENT_REPO_PREFIX, "")
+        
+        # Determine grade color and emoji
+        if score >= 90:
+            grade_letter = "A"
+            color = "28a745"  # Green
+            emoji = "🌟"
+        elif score >= 80:
+            grade_letter = "B"
+            color = "17a2b8"  # Blue
+            emoji = "👍"
+        elif score >= 70:
+            grade_letter = "C"
+            color = "ffc107"  # Yellow
+            emoji = "⚠️"
+        elif score >= 60:
+            grade_letter = "D"
+            color = "fd7e14"  # Orange
+            emoji = "📝"
+        else:
+            grade_letter = "F"
+            color = "dc3545"  # Red
+            emoji = "❌"
+        
+        # Create Teams message card
+        message = {
+            "@type": "MessageCard",
+            "@context": "https://schema.org/extensions",
+            "summary": f"Grade for {student_name}",
+            "themeColor": color,
+            "title": f"{emoji} Laravel Project Graded - {student_name}",
+            "sections": [
+                {
+                    "facts": [
+                        {"name": "Student:", "value": student_name},
+                        {"name": "Repository:", "value": repo_name},
+                        {"name": "Score:", "value": f"{score}/100"},
+                        {"name": "Grade:", "value": grade_letter},
+                        {"name": "Graded on:", "value": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+                    ]
+                }
+            ],
+            "potentialAction": [
+                {
+                    "@type": "OpenUri",
+                    "name": "View Report",
+                    "targets": [
+                        {"os": "default", "uri": f"file:///{html_report_path.replace(os.sep, '/')}"}
+                    ]
+                }
+            ]
+        }
+        
+        # Send to Teams
+        response = requests.post(teams_webhook, json=message, timeout=10)
+        
+        if response.status_code == 200:
+            print(f"[TEAMS] ✓ Notification sent to Teams for {student_name}")
+            return True
+        else:
+            print(f"[TEAMS] ✗ Failed to send notification: {response.status_code}")
+            return False
+            
+    except Exception as e:
+        print(f"[TEAMS] Error sending notification: {e}")
+        return False
+
+# --- MOODLE INTEGRATION ---
+
+def upload_grade_to_moodle(student_username, score, repo_name):
+    """Upload grade to Moodle gradebook"""
+    try:
+        # Check if Moodle is configured
+        if not MOODLE_URL or not MOODLE_TOKEN:
+            print("[SKIP] Moodle not configured")
+            return False
+        
+        # Import MoodleIntegration if available
+        try:
+            from MoodleIntegration import MoodleIntegration
+        except ImportError:
+            print("[SKIP] MoodleIntegration module not available")
+            return False
+        
+        # Initialize Moodle integration
+        moodle = MoodleIntegration(
+            MOODLE_URL,
+            MOODLE_TOKEN,
+            LARAVEL_MOODLE_COURSE_ID,
+            LARAVEL_MOODLE_ACTIVITY_ID,
+            LARAVEL_MOODLE_GRADE_ITEM_ID
+        )
+        
+        # Find student by username (GitHub username)
+        print(f"[MOODLE] Looking up student: {student_username}")
+        student = moodle.find_student_by_username(student_username)
+        
+        if not student:
+            print(f"[MOODLE] ✗ Student not found in Moodle: {student_username}")
+            return False
+        
+        student_id = student['id']
+        
+        # Upload grade
+        print(f"[MOODLE] Uploading grade {score}/100 for {student_username}...")
+        result = moodle.update_grade(student_id, score)
+        
+        if result:
+            print(f"[MOODLE] ✓ Grade uploaded successfully")
+            
+            # Log the upload
+            log_entry = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | {student_username} | {repo_name} | {score}/100\n"
+            with open('moodle_grade_log.txt', 'a', encoding='utf-8') as f:
+                f.write(log_entry)
+            
+            return True
+        else:
+            print(f"[MOODLE] ✗ Failed to upload grade")
+            return False
+            
+    except Exception as e:
+        print(f"[MOODLE] Error uploading grade: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 # --- FUNCTIONALITY TESTING ---
 
@@ -532,11 +717,18 @@ def grade_project(repo, path):
     # Instead of capping at 100, convert to percentage of max possible
     final_score = round((total / max_possible) * 100)
     
-    return final_score, results
+    return final_score, results, tests_ran
 
 # --- EXECUTION ---
 
-def main():
+def main(update_repos=False):
+    """
+    Main grading function.
+    
+    Args:
+        update_repos: If True, pull latest changes for existing repos. 
+                     If False (default), skip pulling and use existing code.
+    """
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     repos = [r for r in org.get_repos() if r.name.startswith(ASSIGNMENT_REPO_PREFIX)]
     
@@ -556,12 +748,16 @@ def main():
                 print(f"[ERROR] Failed to clone: {e}")
                 continue
         else:
-            print(f"[EXISTS] Repository already cloned, pulling latest changes...")
-            try:
-                r = Repo(local_path)
-                r.remotes.origin.pull()
-            except Exception as e:
-                print(f"[WARNING] Could not pull latest changes: {e}")
+            if update_repos:
+                print(f"[EXISTS] Repository already cloned, pulling latest changes...")
+                try:
+                    r = Repo(local_path)
+                    r.remotes.origin.pull()
+                    print(f"[UPDATED] Successfully pulled latest changes")
+                except Exception as e:
+                    print(f"[WARNING] Could not pull latest changes: {e}")
+            else:
+                print(f"[EXISTS] Repository already cloned, using existing code (use --update to pull latest changes)")
         
         # Find Laravel project (might be in subdirectory)
         laravel_path = find_laravel_project(local_path)
@@ -573,7 +769,7 @@ def main():
         # Grade the project
         try:
             r = Repo(local_path)
-            score, results = grade_project(r, laravel_path)
+            score, results, tests_ran = grade_project(r, laravel_path)
             
             print(f'\n[RESULT] Final Score: {score}/100')
             
@@ -584,8 +780,18 @@ def main():
             print(f'[SAVED] JSON report: {json_path}')
             
             # Generate HTML report in the Laravel project directory
-            html_report = generate_html_report(repo.name, results, score, laravel_path)
+            html_report = generate_html_report(repo.name, results, score, laravel_path, tests_ran)
             print(f'[SAVED] HTML report: {html_report}')
+            
+            # Extract student username from repo name
+            student_username = repo.name.replace(ASSIGNMENT_REPO_PREFIX, "")
+            
+            # Send Teams notification
+            print(f'\n[NOTIFICATION] Sending notifications for {student_username}...')
+            send_teams_notification(repo.name, score, html_report)
+            
+            # Upload grade to Moodle
+            upload_grade_to_moodle(student_username, score, repo.name)
             
         except Exception as e:
             print(f"[ERROR] Failed to grade project: {e}")
@@ -598,4 +804,22 @@ def main():
     print("="*70)
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(
+        description='Grade Laravel projects from GitHub repositories',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Examples:
+  python Laravel_grader.py              # Grade using existing repos (no pull)
+  python Laravel_grader.py --update     # Grade and pull latest changes
+  python Laravel_grader.py --pull       # Same as --update
+        '''
+    )
+    parser.add_argument(
+        '--update', '--pull', '-u',
+        action='store_true',
+        dest='update_repos',
+        help='Pull latest changes from GitHub for existing repositories'
+    )
+    
+    args = parser.parse_args()
+    main(update_repos=args.update_repos)
