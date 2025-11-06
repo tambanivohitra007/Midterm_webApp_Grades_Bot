@@ -252,29 +252,59 @@ def check_views(base):
     return score, remarks
 
 def check_readme(base):
-    # Check both the Laravel project directory and the repository root
+    """
+    Check for README documentation at multiple levels.
+    Supports different project structures:
+    - Root level: event-scheduler-student/README.md
+    - Backend folder: event-scheduler-student/backend/README.md
+    - Subfolder: event-scheduler-student/event-management-system/README.md
+    """
+    # Check multiple possible locations for README files
     readme_paths = [
-        os.path.join(base, 'README.md'),           # Laravel project directory
-        os.path.join(base, '..', 'README.md'),     # Repository root (one level up)
+        os.path.join(base, 'README.md'),                    # Laravel project directory
+        os.path.join(base, '..', 'README.md'),              # Repository root (one level up)
+        os.path.join(base, '..', '..', 'README.md'),        # Two levels up (for deeply nested projects)
     ]
     
     content = ''
-    readme_found = False
+    readme_locations = []
     
     for path in readme_paths:
         if os.path.exists(path):
-            content += read_file(path) + ' '
-            readme_found = True
+            # Avoid reading the same file twice (different paths to same file)
+            real_path = os.path.realpath(path)
+            if real_path not in readme_locations:
+                readme_content = read_file(path)
+                content += readme_content + ' '
+                readme_locations.append(real_path)
     
-    if not readme_found:
-        return 0, ['README.md missing']
+    if not readme_locations:
+        return 0, ['README.md missing (checked Laravel dir and repository root)']
     
+    # Score based on project-specific documentation keywords
     score = 0
-    if 'overlap' in content: score += 3
-    if 'capacity' in content: score += 3
-    if 'reflection' in content: score += 2
-    if 'screenshot' in content: score += 2
-    return min(score, RUBRIC['Documentation']), ['README reviewed']
+    remarks = []
+    
+    if 'overlap' in content or 'conflict' in content or 'double-book' in content:
+        score += 3
+        remarks.append('Time overlap logic documented')
+    
+    if 'capacity' in content or 'participant' in content or 'attendee' in content:
+        score += 3
+        remarks.append('Capacity constraints documented')
+    
+    if 'reflection' in content or 'challenge' in content or 'lesson' in content:
+        score += 2
+        remarks.append('Reflection/learning notes included')
+    
+    if 'screenshot' in content or '.png' in content or '.jpg' in content or 'image' in content:
+        score += 2
+        remarks.append('Screenshots/images referenced')
+    
+    if not remarks:
+        remarks.append('README found but lacks project-specific documentation')
+    
+    return min(score, RUBRIC['Documentation']), remarks
 
 def check_constraint_logic(base):
     logic_score, remarks = 0, []
